@@ -38,10 +38,30 @@
       ></div>
       <section id="workspace" class="card" aria-labelledby="upload-heading">
         <section class="stats" aria-label="Validation statistics">
-          <article class="stat-card"><span class="stat-icon">▣</span><div><strong id="stat-processed">0</strong><span>Files processed</span></div></article>
-          <article class="stat-card good"><span class="stat-icon">✓</span><div><strong id="stat-wcag">0</strong><span>WCAG compliant</span></div></article>
-          <article class="stat-card"><span class="stat-icon">✓</span><div><strong id="stat-ua">0</strong><span>PDF/UA compliant</span></div></article>
-          <article class="stat-card accent"><span class="stat-icon">▤</span><div><strong id="stat-pages">0</strong><span>Pages processed</span></div></article>
+          <article class="stat-card">
+            <span class="stat-icon">▣</span>
+            <div>
+              <strong id="stat-processed">0</strong><span>Files processed</span>
+            </div>
+          </article>
+          <article class="stat-card good">
+            <span class="stat-icon">✓</span>
+            <div>
+              <strong id="stat-wcag">0</strong><span>WCAG compliant</span>
+            </div>
+          </article>
+          <article class="stat-card">
+            <span class="stat-icon">✓</span>
+            <div>
+              <strong id="stat-ua">0</strong><span>PDF/UA compliant</span>
+            </div>
+          </article>
+          <article class="stat-card accent">
+            <span class="stat-icon">▤</span>
+            <div>
+              <strong id="stat-pages">0</strong><span>Pages processed</span>
+            </div>
+          </article>
         </section>
         <div class="section-head">
           <div>
@@ -80,11 +100,26 @@
           </div>
         </div>
         <details class="run-options">
-          <summary><span class="options-icon" aria-hidden="true">☷</span><strong>Run options</strong><span class="muted">Recommended defaults are selected</span></summary>
+          <summary>
+            <span class="options-icon" aria-hidden="true">☷</span
+            ><strong>Run options</strong
+            ><span class="muted">Recommended defaults are selected</span>
+          </summary>
           <fieldset class="validation-options">
             <legend>Validation requirement</legend>
-            <label><input type="checkbox" name="profile" value="wcag" checked><strong>WCAG 2.2</strong></label>
-            <label><input type="checkbox" name="profile" value="pdfua1"><strong>PDF/UA-1</strong></label>
+            <label
+              ><input
+                type="checkbox"
+                name="profile"
+                value="wcag"
+                checked
+              /><strong>WCAG 2.2</strong></label
+            >
+            <label
+              ><input type="checkbox" name="profile" value="pdfua1" /><strong
+                >PDF/UA-1</strong
+              ></label
+            >
             <p>Select at least one profile to determine the file outcome.</p>
           </fieldset>
         </details>
@@ -100,10 +135,17 @@
         <div class="section-head">
           <div>
             <p class="eyebrow">WORKSPACE ACTIVITY</p>
-            <h2 id="activity-heading">Your files <span id="count" class="count">0</span></h2>
+            <h2 id="activity-heading">
+              Your files <span id="count" class="count">0</span>
+            </h2>
           </div>
           <div class="activity-tools">
-            <input id="search" type="search" placeholder="Search files" aria-label="Search files" />
+            <input
+              id="search"
+              type="search"
+              placeholder="Search files"
+              aria-label="Search files"
+            />
             <select id="filter" aria-label="Filter status">
               <option value="all">All outcomes</option>
               <option value="active">In progress</option>
@@ -121,7 +163,12 @@
           </div>
           <div id="progress-row" hidden>
             <div id="progress-meter">
-              <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
+              <progress
+                id="progress"
+                max="1"
+                value="0"
+                aria-label="Files processed"
+              ></progress>
               <span id="progress-indicator" aria-hidden="true"></span>
             </div>
             <span id="progress-text" role="status" aria-live="polite"></span>
@@ -159,6 +206,14 @@
         <button id="confirm-cancel">Keep file</button
         ><button class="danger" id="confirm-delete">Delete file</button>
       </div>
+    </dialog>
+    <dialog id="preview-dialog" aria-labelledby="preview-title">
+      <div class="preview-dialog-heading">
+        <h2 id="preview-title">PDF page preview</h2>
+        <button id="preview-close" type="button">Close</button>
+      </div>
+      <p id="preview-note" class="muted"></p>
+      <img id="preview-image" alt="" />
     </dialog>
     <script type="module" src="/src/entry.js"></script>
   </body>

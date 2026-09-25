@@ -15,5 +15,9 @@
     "@playwright/test": "^1.51.0",
     "prettier": "^3.9.9",
     "vite": "^6.3.0"
+  },
+  "dependencies": {
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^6.3.289"
   }
 }

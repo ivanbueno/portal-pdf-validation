@@ -7,6 +7,8 @@ from defusedxml import ElementTree as ET
 from ..models.responses import Issue, ValidationSummary
 
 _PAGE_PATTERN = re.compile(r"\bpage\s*(\d+)\b", re.IGNORECASE)
+_VERAPDF_PAGE_PATTERN = re.compile(r"(?:^|/)pages\[(\d+)(?:-\d+)?\]")
+_VERAPDF_JSON_BBOX_PATTERN = re.compile(r'"p"\s*:\s*(\d+)')
 
 
 @dataclass(frozen=True)
@@ -133,7 +135,7 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
 
 
 def _issue_from_message(rule_id: str | None, message: str, location: str | None, rule: ET.Element) -> Issue:
-    page = _extract_page(location or message)
+    page = _extract_page(" ".join(filter(None, [location, message])))
     category = _infer_category(" ".join(filter(None, [message, rule_id, location])))
     return Issue(
         severity="error",
@@ -179,11 +181,21 @@ def _infer_category(text: str) -> str | None:
 
 
 def _extract_page(text: str) -> int | None:
-    match = _PAGE_PATTERN.search(text or "")
+    text = text or ""
+    match = _PAGE_PATTERN.search(text)
+    page_offset = 0
+    if not match:
+        match = _VERAPDF_PAGE_PATTERN.search(text)
+        if match:
+            page_offset = 1
+    if not match:
+        match = _VERAPDF_JSON_BBOX_PATTERN.search(text)
+        if match:
+            page_offset = 1
     if not match:
         return None
     try:
-        page = int(match.group(1))
+        page = int(match.group(1)) + page_offset
     except ValueError:
         return None
     return page if page > 0 else None

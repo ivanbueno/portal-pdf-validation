@@ -1,4 +1,5 @@
 import "./style.css";
+import { renderOccurrencePreview } from "./pdf-previews.js";
 import {
   api,
   config,
@@ -53,12 +54,15 @@ function notify(text, error = false) {
   notice.classList.toggle("error", error);
   notice.setAttribute("role", error ? "alert" : "status");
   if (text) {
-    noticeTimer = setTimeout(() => {
-      notice.classList.add("notice-leaving");
-      noticeFadeTimer = setTimeout(() => {
-        notice.hidden = true;
-      }, 250);
-    }, error ? 8000 : 5000);
+    noticeTimer = setTimeout(
+      () => {
+        notice.classList.add("notice-leaving");
+        noticeFadeTimer = setTimeout(() => {
+          notice.hidden = true;
+        }, 250);
+      },
+      error ? 8000 : 5000,
+    );
   }
 }
 function showError(error) {
@@ -66,7 +70,8 @@ function showError(error) {
 }
 function renderStaging() {
   $("staging").hidden = !staged.length;
-  $("submit").disabled = busy || !staged.length || !account() || !selectedProfiles().length;
+  $("submit").disabled =
+    busy || !staged.length || !account() || !selectedProfiles().length;
   $("clear").disabled = busy;
   $("files").disabled = busy;
   $("staged-total").textContent =
@@ -94,7 +99,9 @@ function renderStaging() {
   );
 }
 function selectedProfiles() {
-  return [...document.querySelectorAll('input[name="profile"]:checked')].map((input) => input.value);
+  return [...document.querySelectorAll('input[name="profile"]:checked')].map(
+    (input) => input.value,
+  );
 }
 document.querySelectorAll('input[name="profile"]').forEach((input) => {
   input.addEventListener("change", renderStaging);
@@ -132,7 +139,8 @@ $("drop").ondragover = (e) => {
 };
 $("drop").ondragleave = () => $("drop").classList.remove("dragover");
 let fileDragDepth = 0;
-const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+const isFileDrag = (event) =>
+  Array.from(event.dataTransfer?.types || []).includes("Files");
 function clearFileDrag() {
   fileDragDepth = 0;
   document.body.classList.remove("file-dragging");
@@ -197,7 +205,11 @@ $("submit").onclick = async () => {
       item.doc ||= await api("/documents", {
         method: "POST",
         headers: item.key ? { "Idempotency-Key": item.key } : {},
-        body: JSON.stringify({ name: item.file.name, size: item.file.size, profiles: item.profiles ||= selectedProfiles() }),
+        body: JSON.stringify({
+          name: item.file.name,
+          size: item.file.size,
+          profiles: (item.profiles ||= selectedProfiles()),
+        }),
       });
       item.key = item.doc.idempotency_key;
       const current = await api(`/documents/${item.doc.id}`);
@@ -267,8 +279,12 @@ function renderResults() {
   $("stat-ua").textContent = docs.filter((d) =>
     d.profiles?.some((p) => p.profile === "pdfua-1" && p.status === "passed"),
   ).length;
-  $("stat-pages").textContent = docs.reduce((total, d) => total + (d.page_count || 0), 0);
-  $("progress-row").hidden = !progressDocumentIds.size || finished >= progressDocumentIds.size;
+  $("stat-pages").textContent = docs.reduce(
+    (total, d) => total + (d.page_count || 0),
+    0,
+  );
+  $("progress-row").hidden =
+    !progressDocumentIds.size || finished >= progressDocumentIds.size;
   $("progress").max = progressDocumentIds.size || 1;
   $("progress").value = finished;
   const remaining = progressDocumentIds.size - finished;
@@ -311,7 +327,12 @@ function renderResults() {
     tr.setAttribute("aria-expanded", String(expanded.has(d.id)));
     tr.setAttribute("aria-controls", `details-${d.id}`);
     tr.addEventListener("click", (event) => {
-      if (event.target.closest("a, button, input, select, summary, [role='button']")) return;
+      if (
+        event.target.closest(
+          "a, button, input, select, summary, [role='button']",
+        )
+      )
+        return;
       toggleDetail(d).catch(showError);
     });
     tr.addEventListener("keydown", (event) => {
@@ -341,7 +362,10 @@ function renderResults() {
     const requestedProfiles = (
       d.validation_profiles ||
       d.profiles?.map((r) => r.profile) || ["pdfua-1", "wcag-2.2"]
-    ).map((profile) => ({ pdfua1: "pdfua-1", wcag: "wcag-2.2" })[profile] || profile);
+    ).map(
+      (profile) =>
+        ({ pdfua1: "pdfua-1", wcag: "wcag-2.2" })[profile] || profile,
+    );
     for (const profile of requestedProfiles) {
       const result = d.profiles?.find((r) => r.profile === profile);
       const resultStatus = result?.status || d.status;
@@ -355,14 +379,20 @@ function renderResults() {
         node("span", profileLabel(profile), "profile-name"),
         node(
           "span",
-          resultStatus === "passed" ? "Pass" : resultStatus === "failed" ? "Fail" : resultStatus === "error" ? "Error" : "Pending",
+          resultStatus === "passed"
+            ? "Pass"
+            : resultStatus === "failed"
+              ? "Fail"
+              : resultStatus === "error"
+                ? "Error"
+                : "Pending",
           "profile-state",
         ),
       );
       if (resultStatus !== "passed") {
         line.append(
-        node(
-          "span",
+          node(
+            "span",
             issueCount ?? (d.status === "running" ? "" : "—"),
             `profile-count${d.status === "running" ? " is-processing" : ""}`,
           ),
@@ -416,7 +446,8 @@ function renderResults() {
     tr.append(file, status, actions);
     const detail = detailRows.get(d.id) || node("tr", undefined, "detail-row");
     detail.id = `details-${d.id}`;
-    detail.hidden = !expanded.has(d.id) && !detail.classList.contains("detail-closing");
+    detail.hidden =
+      !expanded.has(d.id) && !detail.classList.contains("detail-closing");
     detailRows.set(d.id, detail);
     rows.push(tr, detail);
   }
@@ -432,9 +463,7 @@ async function refresh() {
   // Load the complete result set so summary cards can represent every file.
   // The table still uses documentLimit to control how many matching rows render.
   for (let offset = 0; ; offset += 100) {
-    const data = await api(
-      `/documents?offset=${offset}&limit=100`,
-    );
+    const data = await api(`/documents?offset=${offset}&limit=100`);
     collected.push(...data.items);
     total = data.total;
     processedDocumentCount = data.processed;
@@ -468,14 +497,66 @@ $("load-more").onclick = () => {
 const expanded = new Set(),
   detailRows = new Map();
 let renderedSignature = "";
+const previewCache = new Map();
 const profileLabel = (profile) =>
   profile === "pdfua-1" ? "PDF/UA-1" : "WCAG 2.2";
+async function loadOccurrencePreviews(previews, docId, occurrences) {
+  for (const [index, preview] of previews.entries()) {
+    if (preview.dataset.previewsLoaded) continue;
+    preview.dataset.previewsLoaded = "true";
+    const occurrence = occurrences[index];
+    preview.textContent = "Loading page preview…";
+    let key;
+    try {
+      key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}`;
+      let result = previewCache.get(key);
+      if (!result) {
+        result = renderOccurrencePreview(
+          docId,
+          occurrence,
+          (id) => api(`/documents/${id}/pdf`, { download: true }),
+          320,
+        );
+        previewCache.set(key, result);
+      }
+      const image = await result;
+      const button = node("button", undefined, "preview-thumb");
+      button.type = "button";
+      button.setAttribute(
+        "aria-label",
+        `Enlarge PDF page ${image.page} preview${image.precise ? " with exact error bounds" : " without an exact highlight"}`,
+      );
+      const thumbnail = node("img");
+      thumbnail.src = image.src;
+      thumbnail.alt = `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+      button.append(thumbnail);
+      button.onclick = () => openPreview(docId, occurrence, image);
+      preview.classList.remove("muted");
+      preview.replaceChildren(
+        button,
+        node("span", `Page ${image.page}`, "muted preview-caption"),
+      );
+    } catch (error) {
+      delete preview.dataset.previewsLoaded;
+      if (key) previewCache.delete(key);
+      preview.textContent = "PDF page preview unavailable.";
+      preview.title = error instanceof Error ? error.message : String(error);
+      console.warn("PDF occurrence preview failed", {
+        docId,
+        location: occurrence.location,
+        error,
+      });
+    }
+  }
+}
 function outcome(result, status) {
   if (!result) return labels[status] || "Pending";
   if (result.status === "error") return "Processing error";
   return `${result.passed ? "Pass" : "Fail"} · ${result.summary?.errors ?? "Unknown"} ${result.summary?.errors === 1 ? "error" : "errors"}`;
 }
 async function toggleDetail(doc, forceOpen = false) {
+  const anchor = document.getElementById(`row-${doc.id}`);
+  const anchorTop = anchor?.getBoundingClientRect().top;
   const closing = expanded.has(doc.id) && !forceOpen;
   const detail = detailRows.get(doc.id);
   if (closing) detail?.classList.add("detail-closing");
@@ -483,6 +564,16 @@ async function toggleDetail(doc, forceOpen = false) {
   else expanded.add(doc.id);
   renderedSignature = "";
   renderResults();
+  // Replacing the tbody can make the browser's scroll anchoring choose a
+  // different table position. Keep the toggled row at its current viewport Y.
+  if (anchorTop != null) {
+    requestAnimationFrame(() => {
+      const currentTop = document
+        .getElementById(`row-${doc.id}`)
+        ?.getBoundingClientRect().top;
+      if (currentTop != null) window.scrollBy(0, currentTop - anchorTop);
+    });
+  }
   if (closing) {
     const row = detailRows.get(doc.id);
     window.setTimeout(() => {
@@ -509,7 +600,9 @@ async function loadDetail(doc, offset = 0) {
   const content = node("div", undefined, "expanded-report");
   cell.append(content);
   row.replaceChildren(cell);
-  content.append(node("p", "Loading validation details…", "muted loading-message"));
+  content.append(
+    node("p", "Loading validation details…", "muted loading-message"),
+  );
   content.setAttribute("aria-live", "polite");
   try {
     const [d, groups] = await Promise.all([
@@ -579,26 +672,64 @@ async function loadDetail(doc, offset = 0) {
       if (group.specification)
         body.append(node("p", group.specification, "muted"));
       const occurrences = node("details", undefined, "occurrences");
+      const previewContainers = [];
+      occurrences.addEventListener("toggle", () => {
+        if (occurrences.open)
+          loadOccurrencePreviews(
+            previewContainers,
+            doc.id,
+            group.occurrences,
+          ).catch(() => {});
+      });
       occurrences.append(
         node(
           "summary",
           `${group.count} failed ${group.count === 1 ? "check" : "checks"} · View locations`,
         ),
       );
-      for (const occurrence of group.occurrences) {
+      for (const occurrence of group.occurrences.slice(0, 5)) {
         const item = node("div", undefined, "issue-location");
         item.append(
           node("strong", profileLabel(occurrence.profile)),
           node("p", occurrence.message),
         );
         if (occurrence.page) item.append(node("p", `Page ${occurrence.page}`));
-        item.append(
+        const preview = node(
+          "div",
+          "Open locations to load page preview.",
+          "occurrence-preview muted",
+        );
+        previewContainers.push(preview);
+        item.append(preview);
+        occurrences.append(item);
+      }
+      const additionalOccurrences = group.occurrences.slice(5);
+      if (additionalOccurrences.length) {
+        const pages = [
+          ...new Set(
+            additionalOccurrences
+              .map((occurrence) => Number(occurrence.page))
+              .filter((page) => Number.isInteger(page) && page > 0),
+          ),
+        ].sort((a, b) => a - b);
+        const missingPages = additionalOccurrences.filter((occurrence) => {
+          const page = Number(occurrence.page);
+          return !Number.isInteger(page) || page < 1;
+        }).length;
+        const pageSummary = pages.length
+          ? `Similar issue on pages: ${pages.join(", ")}.`
+          : `Similar issue in ${additionalOccurrences.length} more locations; page numbers were not supplied.`;
+        const missingPageSummary =
+          pages.length && missingPages
+            ? ` Page number unavailable for ${missingPages} more ${missingPages === 1 ? "location" : "locations"}.`
+            : "";
+        occurrences.append(
           node(
-            "code",
-            occurrence.location || "Location not supplied by veraPDF",
+            "p",
+            `${pageSummary}${missingPageSummary}`,
+            "muted issue-locations-summary",
           ),
         );
-        occurrences.append(item);
       }
       if (group.count > group.occurrences.length)
         occurrences.append(
@@ -630,6 +761,43 @@ async function loadDetail(doc, offset = 0) {
     );
   }
 }
+async function openPreview(docId, occurrence, thumbnail) {
+  const dialog = $("preview-dialog");
+  $("preview-title").textContent =
+    `PDF page ${thumbnail.page} · ${occurrence.message}`;
+  $("preview-image").src = thumbnail.src;
+  $("preview-image").alt =
+    `PDF page ${thumbnail.page}${thumbnail.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+  $("preview-note").textContent = "Loading enlarged page…";
+  dialog.showModal();
+  $("preview-close").focus();
+  try {
+    const key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}:large`;
+    let result = previewCache.get(key);
+    if (!result) {
+      result = renderOccurrencePreview(
+        docId,
+        occurrence,
+        (id) => api(`/documents/${id}/pdf`, { download: true }),
+        1100,
+      );
+      previewCache.set(key, result);
+    }
+    const image = await result;
+    if (!dialog.open) return;
+    $("preview-image").src = image.src;
+    $("preview-image").alt =
+      `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+    $("preview-note").textContent = image.precise
+      ? "Red box uses the coordinates or form annotation bounds identified by veraPDF."
+      : "No precise coordinates could be derived from this veraPDF location; the page is shown without a highlight.";
+  } catch {
+    if (dialog.open)
+      $("preview-note").textContent =
+        "Could not load the enlarged PDF preview.";
+  }
+}
+$("preview-close").onclick = () => $("preview-dialog").close();
 document.addEventListener("click", (event) => {
   document.querySelectorAll(".action-dropdown[open]").forEach((menu) => {
     if (!menu.contains(event.target)) menu.open = false;
