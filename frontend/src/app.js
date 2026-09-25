@@ -340,8 +340,10 @@ function renderResults() {
           resultStatus === "passed" ? "Pass" : resultStatus === "failed" ? "Fail" : resultStatus === "error" ? "Error" : "Pending",
           "profile-state",
         ),
-        node("span", issueCount ?? "—", "profile-count"),
       );
+      if (resultStatus !== "passed") {
+        line.append(node("span", issueCount ?? "—", "profile-count"));
+      }
       status.append(line);
     }
     const actions = node("td");
