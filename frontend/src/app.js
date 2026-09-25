@@ -205,6 +205,14 @@ function renderResults() {
     finished = submitted.filter((d) =>
       ["passed", "failed", "error"].includes(d.status),
     ).length;
+  $("stat-processed").textContent = finished;
+  $("stat-wcag").textContent = docs.filter((d) =>
+    d.profiles?.some((p) => p.profile === "wcag-2.2" && p.status === "passed"),
+  ).length;
+  $("stat-ua").textContent = docs.filter((d) =>
+    d.profiles?.some((p) => p.profile === "pdfua-1" && p.status === "passed"),
+  ).length;
+  $("stat-pages").textContent = docs.reduce((total, d) => total + (d.page_count || 0), 0);
   $("progress-row").hidden = !submitted.length || finished === submitted.length;
   $("progress").max = submitted.length || 1;
   $("progress").value = finished;

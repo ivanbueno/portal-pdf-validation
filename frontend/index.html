@@ -37,16 +37,18 @@
         hidden
       ></div>
       <section id="workspace" class="card" aria-labelledby="upload-heading">
+        <section class="stats" aria-label="Validation statistics">
+          <article class="stat-card"><span class="stat-icon">▣</span><div><strong id="stat-processed">0</strong><span>Files processed</span></div></article>
+          <article class="stat-card good"><span class="stat-icon">✓</span><div><strong id="stat-wcag">0</strong><span>WCAG compliant</span></div></article>
+          <article class="stat-card"><span class="stat-icon">✓</span><div><strong id="stat-ua">0</strong><span>PDF/UA compliant</span></div></article>
+          <article class="stat-card accent"><span class="stat-icon">▤</span><div><strong id="stat-pages">0</strong><span>Pages processed</span></div></article>
+        </section>
         <div class="section-head">
           <div>
-            <p class="eyebrow">NEW VALIDATION</p>
-            <h2 id="upload-heading">Check your PDFs</h2>
+            <p class="eyebrow" id="upload-heading">VALIDATE YOUR PDFS</p>
           </div>
           <span class="pill neutral">Powered by veraPDF</span>
         </div>
-        <p class="intro">
-          Upload documents to check PDF/UA-1 and WCAG 2.2 rules.
-        </p>
         <label id="drop" class="drop"
           ><span class="upload-icon" aria-hidden="true">↑</span
           ><strong>Drop PDFs here to begin</strong
@@ -84,7 +86,7 @@
           </div>
           <div>
             <span class="check">✓</span><strong>WCAG 2.2</strong
-            ><span>Custom automated validation profile</span>
+            ><span>General user-facing web accessibility</span>
           </div>
         </div>
         <div class="submit-row">
@@ -95,57 +97,48 @@
           >
         </div>
       </section>
+      <div id="progress-row" hidden>
+        <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
+        <span id="progress-text" role="status" aria-live="polite"></span>
+      </div>
       <section class="activity" aria-labelledby="activity-heading">
         <div class="section-head">
           <div>
             <p class="eyebrow">WORKSPACE ACTIVITY</p>
-            <h2 id="activity-heading">
-              Your files <span id="count" class="count">0</span>
-            </h2>
+            <h2 id="activity-heading">Your files <span id="count" class="count">0</span></h2>
           </div>
-          <button id="refresh">Refresh</button>
+          <div class="activity-tools">
+            <input id="search" type="search" placeholder="Search files" aria-label="Search files" />
+            <select id="filter" aria-label="Filter status">
+              <option value="all">All outcomes</option>
+              <option value="active">In progress</option>
+              <option value="passed">Passed checks</option>
+              <option value="failed">Failed checks</option>
+              <option value="error">Processing errors</option>
+            </select>
+            <button id="refresh">Refresh</button>
+          </div>
         </div>
-        <div class="toolbar filters">
-          <input
-            id="search"
-            type="search"
-            placeholder="Search files"
-            aria-label="Search files"
-          /><select id="filter" aria-label="Filter status">
-            <option value="all">All outcomes</option>
-            <option value="active">In progress</option>
-            <option value="passed">Passed checks</option>
-            <option value="failed">Failed checks</option>
-            <option value="error">Processing errors</option>
-          </select>
+        <div class="activity-content">
+          <div id="empty" class="empty">
+            <span aria-hidden="true">▤</span>
+            <h3>No files yet</h3>
+            <p>Your validation results will appear here.</p>
+          </div>
+          <div class="table-wrap">
+            <table id="results" hidden>
+              <thead>
+                <tr>
+                  <th>Document</th>
+                  <th>Validation results</th>
+                  <th><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="results-body"></tbody>
+            </table>
+          </div>
+          <button id="load-more" hidden>Load older files</button>
         </div>
-        <div id="progress-row" hidden>
-          <progress
-            id="progress"
-            max="1"
-            value="0"
-            aria-label="Files processed"
-          ></progress
-          ><span id="progress-text" role="status" aria-live="polite"></span>
-        </div>
-        <div id="empty" class="empty">
-          <span aria-hidden="true">▤</span>
-          <h3>No files yet</h3>
-          <p>Your validation results will appear here.</p>
-        </div>
-        <div class="table-wrap">
-          <table id="results" hidden>
-            <thead>
-              <tr>
-                <th>Document</th>
-                <th>Validation results</th>
-                <th><span class="sr-only">Actions</span></th>
-              </tr>
-            </thead>
-            <tbody id="results-body"></tbody>
-          </table>
-        </div>
-        <button id="load-more" hidden>Load older files</button>
       </section>
       <footer>
         <p>
