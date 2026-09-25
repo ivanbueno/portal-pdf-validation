@@ -743,6 +743,17 @@ button {
   align-items: flex-start;
   gap: 12px;
 }
+#results .document-row {
+  cursor: pointer;
+}
+#results .document-row:hover > td,
+#results .document-row:focus-visible > td {
+  background: var(--soft);
+}
+#results .document-row:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
 .document-file > div {
   min-width: 0;
 }
@@ -767,21 +778,64 @@ button {
   line-height: 1.6;
 }
 .profile-line {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px;
-  margin: 5px 0;
-  line-height: 1.6;
-}
-.profile-line strong {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  margin: 4px 5px 4px 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
   color: var(--muted);
   font-size: 0.75rem;
-  min-width: 65px;
+  font-weight: 650;
+  white-space: nowrap;
 }
-.profile-result {
-  background: none;
-  font-size: 0.875rem;
+.profile-line > span {
+  padding: 5px 9px;
+}
+.profile-line > span + span {
+  border-left: 1px solid var(--line);
+}
+.profile-line .profile-name {
+  color: inherit;
+  background: var(--soft);
+}
+.profile-line.passed .profile-state {
+  color: var(--good);
+}
+.profile-line.passed {
+  border-color: color-mix(in srgb, var(--good) 58%, var(--line));
+  background: color-mix(in srgb, var(--good) 9%, var(--panel));
+}
+.profile-line.passed .profile-name {
+  color: var(--good);
+  background: color-mix(in srgb, var(--good) 22%, var(--panel));
+}
+.profile-line.passed > span + span {
+  border-left-color: color-mix(in srgb, var(--good) 28%, var(--line));
+}
+.profile-line.failed .profile-state,
+.profile-line.error .profile-state {
+  color: var(--bad);
+}
+.profile-line.failed,
+.profile-line.error {
+  border-color: color-mix(in srgb, var(--bad) 58%, var(--line));
+  background: color-mix(in srgb, var(--bad) 8%, var(--panel));
+}
+.profile-line.failed .profile-name,
+.profile-line.error .profile-name {
+  color: var(--bad);
+  background: color-mix(in srgb, var(--bad) 20%, var(--panel));
+}
+.profile-line.failed > span + span,
+.profile-line.error > span + span {
+  border-left-color: color-mix(in srgb, var(--bad) 26%, var(--line));
+}
+.profile-line .profile-count {
+  min-width: 30px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 .split-button {
   display: inline-flex;

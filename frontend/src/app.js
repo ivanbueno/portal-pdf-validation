@@ -230,6 +230,7 @@ function renderResults() {
   const rows = [];
   for (const d of visible) {
     const tr = node("tr", undefined, "document-row");
+    tr.id = `row-${d.id}`;
     const file = node("td"),
       fileLayout = node("div", undefined, "document-file");
     const toggle = action(
@@ -241,6 +242,18 @@ function renderResults() {
     toggle.setAttribute("aria-label", `Validation details for ${d.name}`);
     toggle.setAttribute("aria-expanded", String(expanded.has(d.id)));
     toggle.setAttribute("aria-controls", `details-${d.id}`);
+    tr.tabIndex = 0;
+    tr.setAttribute("aria-expanded", String(expanded.has(d.id)));
+    tr.setAttribute("aria-controls", `details-${d.id}`);
+    tr.addEventListener("click", (event) => {
+      if (event.target.closest("a, button, input, select, summary, [role='button']")) return;
+      toggleDetail(d).catch(showError);
+    });
+    tr.addEventListener("keydown", (event) => {
+      if (event.target !== tr || !["Enter", " "].includes(event.key)) return;
+      event.preventDefault();
+      toggleDetail(d).catch(showError);
+    });
     const info = node("div");
     const link = node(d.pdf_available ? "a" : "span", d.name, "pdf-link");
     if (d.pdf_available) {
@@ -262,14 +275,21 @@ function renderResults() {
     const status = node("td", undefined, "profile-outcomes");
     for (const profile of ["pdfua-1", "wcag-2.2"]) {
       const result = d.profiles?.find((r) => r.profile === profile);
-      const line = node("div", undefined, "profile-line");
+      const resultStatus = result?.status || d.status;
+      const line = node("div", undefined, `profile-line ${resultStatus}`);
+      const issueCount = result?.summary?.errors ?? result?.issue_total;
+      line.setAttribute(
+        "aria-label",
+        `${profileLabel(profile)}: ${labels[resultStatus] || "Pending"}, ${issueCount ?? "unknown"} errors`,
+      );
       line.append(
-        node("strong", profileLabel(profile)),
+        node("span", profileLabel(profile), "profile-name"),
         node(
           "span",
-          outcome(result, d.status),
-          `profile-result ${result?.status || d.status}`,
+          resultStatus === "passed" ? "Pass" : resultStatus === "failed" ? "Fail" : resultStatus === "error" ? "Error" : "Pending",
+          "profile-state",
         ),
+        node("span", issueCount ?? "—", "profile-count"),
       );
       status.append(line);
     }
