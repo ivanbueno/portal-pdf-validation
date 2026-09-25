@@ -838,6 +838,7 @@ button {
 }
 .profile-line {
   display: inline-flex;
+  position: relative;
   align-items: center;
   overflow: hidden;
   margin: 4px 5px 4px 0;
@@ -849,6 +850,30 @@ button {
   font-weight: 650;
   white-space: nowrap;
   transition: color .2s ease, background-color .2s ease, border-color .2s ease;
+}
+.profile-line.running::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 38%;
+  content: "";
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--accent) 24%, transparent), transparent);
+  animation: profile-line-sweep 1.8s ease-in-out infinite;
+}
+.profile-line.running > span {
+  position: relative;
+  z-index: 1;
+}
+@keyframes profile-line-sweep {
+  from { transform: translateX(-110%); }
+  to { transform: translateX(280%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-line.running::after {
+    animation: none;
+    opacity: .45;
+    transform: translateX(90%);
+  }
 }
 .profile-line > span {
   padding: 5px 9px;
