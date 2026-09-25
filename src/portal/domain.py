@@ -13,6 +13,15 @@ class FileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=240)
     size: int = Field(gt=0, le=MAX_FILE, strict=True)
+    profiles: list[str] = Field(default_factory=lambda: ["wcag-2.2"], min_length=1)
+
+    @field_validator("profiles")
+    @classmethod
+    def validation_profiles(cls, value):
+        supported = {"pdfua-1", "wcag-2.2"}
+        if len(value) != len(set(value)) or not set(value) <= supported:
+            raise ValueError("Choose WCAG 2.2, PDF/UA-1, or both")
+        return value
 
     @field_validator("name")
     @classmethod
@@ -42,6 +51,7 @@ PUBLIC = {
 
 def public(row):
     return {key: value for key, value in row.items() if key in PUBLIC} | {
+        "validation_profiles": json.loads(row.get("requested_profiles", json.dumps(["pdfua-1", "wcag-2.2"]))),
         "profiles": json.loads(row.get("profile_summaries", "[]")),
         "pdf_available": bool(row.get("snapshot")),
     }
@@ -74,6 +84,7 @@ def reserve(store, settings, owner, body, key):
                     kind="document",
                     name=body.name,
                     size=body.size,
+                    requested_profiles=json.dumps(body.profiles),
                     status="uploading",
                     created=now,
                     expires=now + settings.upload_ttl,

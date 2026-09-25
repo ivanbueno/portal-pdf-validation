@@ -79,16 +79,15 @@
             </table>
           </div>
         </div>
-        <div class="validation-options">
-          <div>
-            <span class="check">✓</span><strong>PDF/UA-1</strong
-            ><span>Document structure and accessibility</span>
-          </div>
-          <div>
-            <span class="check">✓</span><strong>WCAG 2.2</strong
-            ><span>General user-facing web accessibility</span>
-          </div>
-        </div>
+        <details class="run-options">
+          <summary><span class="options-icon" aria-hidden="true">☷</span><strong>Run options</strong><span class="muted">Recommended defaults are selected</span></summary>
+          <fieldset class="validation-options">
+            <legend>Validation requirement</legend>
+            <label><input type="checkbox" name="profile" value="wcag-2.2" checked><strong>WCAG 2.2</strong></label>
+            <label><input type="checkbox" name="profile" value="pdfua-1"><strong>PDF/UA-1</strong></label>
+            <p>Select at least one profile to determine the file outcome.</p>
+          </fieldset>
+        </details>
         <div class="submit-row">
           <button id="submit" class="primary" disabled>
             Validate PDFs <span aria-hidden="true">→</span></button

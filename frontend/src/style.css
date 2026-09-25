@@ -281,29 +281,18 @@ h3 {
   border-radius: 12px;
   margin: 0 4px 0 0;
 }
-.validation-options {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  border-bottom: 1px solid var(--line);
-  gap: 20px;
-  padding: 24px 0;
-}
-.validation-options > div {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  gap: 5px 8px;
-}
-.validation-options strong {
-  font-size: 0.875rem;
-}
-.validation-options div > span:last-child {
-  grid-column: 2;
-  color: var(--muted);
-  font-size: 0.8125rem;
-}
-.check {
-  color: var(--accent);
-}
+.run-options { border-bottom: 1px solid var(--line); }
+.run-options > summary { display: flex; align-items: center; gap: 12px; padding: 18px 0; cursor: pointer; list-style: none; }
+.run-options > summary::-webkit-details-marker { display: none; }
+.run-options > summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.4rem; }
+.run-options[open] > summary::after { content: "⌄"; }
+.run-options > summary strong { font-size: 1rem; }
+.options-icon { color: var(--accent); font-size: 1.25rem; }
+.validation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 0; border-top: 1px solid var(--line); margin: 0; padding: 20px 0; }
+.validation-options legend { grid-column: 1 / -1; padding: 16px 0 4px; font-size: .8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; }
+.validation-options label { display: flex; align-items: center; gap: 10px; }
+.validation-options input { accent-color: var(--accent); width: 20px; height: 20px; }
+.validation-options p { grid-column: 1 / -1; margin: 0 0 0 30px; color: var(--muted); font-size: .875rem; }
 .submit-row {
   padding-top: 22px;
   flex-wrap: wrap;
@@ -653,9 +642,7 @@ dialog::backdrop {
   .section-head > .neutral {
     display: none;
   }
-  .validation-options {
-    grid-template-columns: 1fr;
-  }
+  .validation-options { grid-template-columns: 1fr; }
   .filters {
     flex-wrap: wrap;
   }
@@ -727,6 +714,9 @@ button {
 /* Document results and the expandable report share a single reading order. */
 #results {
   table-layout: fixed;
+}
+#results thead {
+  display: none;
 }
 #results th:first-child {
   width: 45%;

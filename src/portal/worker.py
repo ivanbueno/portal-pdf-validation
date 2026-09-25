@@ -53,7 +53,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "input.pdf"
             store.download(prefix(doc) + "input.pdf", path, doc["snapshot"])
-            for profile in PROFILES:
+            for profile in json.loads(doc.get("requested_profiles", json.dumps(PROFILES))):
                 if not active(store, doc):
                     return True
                 try:

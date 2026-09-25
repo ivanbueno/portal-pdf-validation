@@ -36,6 +36,7 @@ const action = (text, handler, className) => {
 let staged = [],
   documents = [],
   busy = false,
+  progressDocumentIds = new Set(),
   documentLimit = 20,
   pollDelay = 2500,
   pollTimer;
@@ -50,7 +51,7 @@ function showError(error) {
 }
 function renderStaging() {
   $("staging").hidden = !staged.length;
-  $("submit").disabled = busy || !staged.length || !account();
+  $("submit").disabled = busy || !staged.length || !account() || !selectedProfiles().length;
   $("clear").disabled = busy;
   $("files").disabled = busy;
   $("staged-total").textContent =
@@ -77,6 +78,12 @@ function renderStaging() {
     }),
   );
 }
+function selectedProfiles() {
+  return [...document.querySelectorAll('input[name="profile"]:checked')].map((input) => input.value);
+}
+document.querySelectorAll('input[name="profile"]').forEach((input) => {
+  input.addEventListener("change", renderStaging);
+});
 function addFiles(files) {
   if (busy) return;
   for (const file of files) {
@@ -137,6 +144,7 @@ $("clear").onclick = async () => {
 };
 $("submit").onclick = async () => {
   busy = true;
+  progressDocumentIds = new Set();
   notify("Preparing your documents…");
   $("submit").textContent = "Uploading…";
   renderStaging();
@@ -147,7 +155,7 @@ $("submit").onclick = async () => {
       item.doc ||= await api("/documents", {
         method: "POST",
         headers: item.key ? { "Idempotency-Key": item.key } : {},
-        body: JSON.stringify({ name: item.file.name, size: item.file.size }),
+        body: JSON.stringify({ name: item.file.name, size: item.file.size, profiles: item.profiles ||= selectedProfiles() }),
       });
       item.key = item.doc.idempotency_key;
       const current = await api(`/documents/${item.doc.id}`);
@@ -164,6 +172,7 @@ $("submit").onclick = async () => {
         }
         await api(`/documents/${item.doc.id}/submit`, { method: "POST" });
       }
+      progressDocumentIds.add(item.doc.id);
       submitted++;
       staged.splice(staged.indexOf(item), 1);
     } catch (error) {
@@ -181,6 +190,7 @@ $("submit").onclick = async () => {
     `${submitted} files submitted. ${staged.length ? `${staged.length} files need attention; retry the remaining files.` : "You can leave this page and return to your results."}`,
     !!staged.length,
   );
+  documentLimit = Math.max(documentLimit, progressDocumentIds.size);
   await refresh().catch(showError);
 };
 function renderResults() {
@@ -201,7 +211,7 @@ function renderResults() {
   $("empty").querySelector("h3").textContent = docs.length
     ? "No matching files"
     : "No files yet";
-  const submitted = docs.filter((d) => d.status !== "uploading"),
+  const submitted = docs.filter((d) => progressDocumentIds.has(d.id)),
     finished = submitted.filter((d) =>
       ["passed", "failed", "error"].includes(d.status),
     ).length;
@@ -213,11 +223,11 @@ function renderResults() {
     d.profiles?.some((p) => p.profile === "pdfua-1" && p.status === "passed"),
   ).length;
   $("stat-pages").textContent = docs.reduce((total, d) => total + (d.page_count || 0), 0);
-  $("progress-row").hidden = !submitted.length || finished === submitted.length;
-  $("progress").max = submitted.length || 1;
+  $("progress-row").hidden = !progressDocumentIds.size || finished >= progressDocumentIds.size;
+  $("progress").max = progressDocumentIds.size || 1;
   $("progress").value = finished;
   $("progress-text").textContent =
-    `${finished} of ${submitted.length} files processed`;
+    `${finished} of ${progressDocumentIds.size} files processed`;
   const signature = JSON.stringify(visible);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
@@ -273,7 +283,7 @@ function renderResults() {
     fileLayout.append(toggle, info);
     file.append(fileLayout);
     const status = node("td", undefined, "profile-outcomes");
-    for (const profile of ["pdfua-1", "wcag-2.2"]) {
+    for (const profile of (d.validation_profiles || d.profiles?.map((r) => r.profile) || ["pdfua-1", "wcag-2.2"])) {
       const result = d.profiles?.find((r) => r.profile === profile);
       const resultStatus = result?.status || d.status;
       const line = node("div", undefined, `profile-line ${resultStatus}`);
