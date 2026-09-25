@@ -9,6 +9,7 @@ from azure.data.tables import TableServiceClient, UpdateMode
 from azure.identity import DefaultAzureCredential
 from azure.storage.blob import BlobServiceClient, BlobSasPermissions, generate_blob_sas, ContentSettings
 from azure.storage.queue import QueueClient
+from .config import MAX_FILE
 
 
 class Conflict(Exception):
@@ -117,10 +118,12 @@ class Storage:
             base = self.settings.public_blob_endpoint.rstrip("/") + urlsplit(base).path
         return base + "?" + generate_blob_sas(**args), expiry.timestamp()
 
-    def snapshot(self, name, expected_size):
+    def snapshot(self, name, expected_size=None):
         blob = self.blob(name)
         props = blob.get_blob_properties()
-        if props.size != expected_size:
+        if props.size <= 0 or props.size > MAX_FILE:
+            raise ValueError("Uploaded file exceeds the 200 MiB limit")
+        if expected_size is not None and props.size != expected_size:
             raise ValueError("Uploaded size does not match the reserved file size")
         if (
             not blob.download_blob(
@@ -134,9 +137,10 @@ class Storage:
             .startswith(b"%PDF-")
         ):
             raise ValueError("File is not a PDF")
-        return blob.create_snapshot(etag=props.etag, match_condition=MatchConditions.IfNotModified)[
+        snapshot = blob.create_snapshot(etag=props.etag, match_condition=MatchConditions.IfNotModified)[
             "snapshot"
         ]
+        return snapshot, props.size
 
     def download(self, name, target, snapshot=None):
         with open(target, "wb") as stream:

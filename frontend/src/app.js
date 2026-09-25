@@ -283,7 +283,11 @@ function renderResults() {
     fileLayout.append(toggle, info);
     file.append(fileLayout);
     const status = node("td", undefined, "profile-outcomes");
-    for (const profile of (d.validation_profiles || d.profiles?.map((r) => r.profile) || ["pdfua-1", "wcag-2.2"])) {
+    const requestedProfiles = (
+      d.validation_profiles ||
+      d.profiles?.map((r) => r.profile) || ["pdfua-1", "wcag-2.2"]
+    ).map((profile) => ({ pdfua1: "pdfua-1", wcag: "wcag-2.2" })[profile] || profile);
+    for (const profile of requestedProfiles) {
       const result = d.profiles?.find((r) => r.profile === profile);
       const resultStatus = result?.status || d.status;
       const line = node("div", undefined, `profile-line ${resultStatus}`);

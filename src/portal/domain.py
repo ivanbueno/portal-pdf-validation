@@ -4,6 +4,7 @@ import time
 import uuid
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from typing import Literal
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
 from .config import MAX_FILE
 from .storage import Conflict
@@ -12,12 +13,14 @@ from .storage import Conflict
 class FileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=240)
-    size: int = Field(gt=0, le=MAX_FILE, strict=True)
-    profiles: list[str] = Field(default_factory=lambda: ["wcag-2.2"], min_length=1)
+    size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
+    profiles: list[Literal["wcag", "pdfua1"]] = Field(default_factory=lambda: ["wcag"], min_length=1)
 
     @field_validator("profiles")
     @classmethod
     def validation_profiles(cls, value):
+        aliases = {"pdfua1": "pdfua-1", "wcag": "wcag-2.2"}
+        value = [aliases[profile] for profile in value]
         supported = {"pdfua-1", "wcag-2.2"}
         if len(value) != len(set(value)) or not set(value) <= supported:
             raise ValueError("Choose WCAG 2.2, PDF/UA-1, or both")
@@ -51,7 +54,10 @@ PUBLIC = {
 
 def public(row):
     return {key: value for key, value in row.items() if key in PUBLIC} | {
-        "validation_profiles": json.loads(row.get("requested_profiles", json.dumps(["pdfua-1", "wcag-2.2"]))),
+        "validation_profiles": [
+            {"pdfua-1": "pdfua1", "wcag-2.2": "wcag"}.get(profile, profile)
+            for profile in json.loads(row.get("requested_profiles", json.dumps(["pdfua-1", "wcag-2.2"])))
+        ],
         "profiles": json.loads(row.get("profile_summaries", "[]")),
         "pdf_available": bool(row.get("snapshot")),
     }
@@ -83,7 +89,7 @@ def reserve(store, settings, owner, body, key):
                     id=doc_id,
                     kind="document",
                     name=body.name,
-                    size=body.size,
+                    **({"size": body.size} if body.size is not None else {}),
                     requested_profiles=json.dumps(body.profiles),
                     status="uploading",
                     created=now,
@@ -106,13 +112,18 @@ def submit(store, settings, owner, doc_id):
     doc = get_owned(store, owner, doc_id, "document")
     if doc["status"] == "uploading":
         try:
-            snapshot = store.snapshot(prefix(doc) + "input.pdf", doc["size"])
+            snapshot_result = store.snapshot(prefix(doc) + "input.pdf", doc.get("size"))
+            if isinstance(snapshot_result, tuple):
+                snapshot, size = snapshot_result
+            else:  # Compatibility with storage adapters that return only the snapshot ID.
+                snapshot, size = snapshot_result, doc.get("size")
         except (ResourceNotFoundError, ResourceModifiedError, ValueError):
             raise HTTPException(409, "Upload incomplete or invalid")
         now = time.time()
         # One conditional write binds the snapshot and commits the durable outbox.
         doc.update(
             snapshot=snapshot,
+            size=size,
             status="queued",
             submitted=now,
             expires=now + settings.retention_seconds,

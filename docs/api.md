@@ -18,7 +18,7 @@ PDF_PATH=example.pdf
 python3 - "$PDF_PATH" > /tmp/pdf-document.json <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
-print(json.dumps({'name': p.name, 'size': p.stat().st_size}))
+print(json.dumps({'name': p.name, 'profiles': ['wcag']}))
 PY
 curl --fail-with-body "$BASE/api/v1/documents" \
   -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
@@ -38,9 +38,33 @@ curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/reports/xml?profile=p
   -H "Authorization: Bearer $TOKEN" -o pdfua.xml
 ```
 
+### Select validation profiles
+
+Pass `profiles` in the JSON body to `POST /documents`. Accepted values are `wcag` and `pdfua1`; include both values to run both validators. If the property is omitted, the API runs WCAG only.
+
+```json
+{"name":"example.pdf"}
+```
+
+```json
+{"name":"example.pdf","profiles":["wcag"]}
+```
+
+```json
+{"name":"example.pdf","profiles":["pdfua1"]}
+```
+
+```json
+{"name":"example.pdf","profiles":["wcag","pdfua1"]}
+```
+
+An empty list, unsupported value, or duplicate value returns 422. The reservation response exposes the selected values as `validation_profiles`. Reuse the same profile list along with the same filename and size when retrying a create request with the same idempotency key.
+
+`size` is optional. When omitted, the API reads the uploaded blob's actual size at submission, enforces the 200 MiB limit, and returns the measured size in document responses. If provided, the supplied size is checked against the uploaded file.
+
 Treat upload URLs as temporary credentials. Do not log them or forward your Entra token to Blob Storage. Renew a grant with `POST /documents/{id}/upload-url` while the reservation is active and that file has not been snapshotted. A PUT can be retried; after submission, replacement bytes do not change the validated snapshot.
 
-Every new `POST /documents` without an `Idempotency-Key` header generates a UUID key. The response returns it as `idempotency_key` and in the `Idempotency-Key` header, including handled storage-error responses. Save and reuse it with identical `{name,size}` when retrying creation. Different metadata with the same key returns 409. Separate posts without a key create separate documents, even with identical names and sizes.
+Every new `POST /documents` without an `Idempotency-Key` header generates a UUID key. The response returns it as `idempotency_key` and in the `Idempotency-Key` header, including handled storage-error responses. Save and reuse it with identical `{name,size?,profiles?}` when retrying creation. Different metadata with the same key returns 409. Separate posts without a key create separate documents, even with identical names and sizes.
 
 A server-generated key cannot deduplicate a retry if the original response was completely lost before the client received the key. Integrations needing that guarantee can optionally generate and persist their own key **before** the first request. Keys accept 1–128 letters, digits, dots, underscores, colons, or hyphens. Keys are scoped to the authenticated owner and retained for the lifetime of the document/tombstone, not indefinitely after cleanup.
 
@@ -50,7 +74,7 @@ Submission is idempotent by document ID; no additional key is needed. Missing/in
 
 | Operation | Behavior |
 |---|---|
-| `POST /documents` | JSON `{name,size}` for one PDF; returns 201 with ID, generated key, and upload grant. Optional `Idempotency-Key` request header supports replay. |
+| `POST /documents` | JSON `{name,size?,profiles?}` for one PDF; `size` is optional and checked against the uploaded blob. `profiles` accepts `wcag`, `pdfua1`, or both and defaults to `wcag`. Returns 201 with ID, selected `validation_profiles`, generated key, and upload grant. Optional `Idempotency-Key` request header supports replay. |
 | `POST /documents/{id}/submit` | Verifies and snapshots the PDF; returns 202 and current state. |
 | `POST /documents/{id}/upload-url` | Renews a grant for an unsubmitted document. |
 | `GET /documents?offset=0&limit=20` | Lists owned, unexpired documents, newest first; limit up to 100. |

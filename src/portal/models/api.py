@@ -20,10 +20,10 @@ class DocumentView(BaseModel):
     page_count: int | None = None
     pdf_available: bool = False
     profiles: list[ProfileResult] = Field(default_factory=list)
-    validation_profiles: list[Literal["pdfua-1", "wcag-2.2"]] = Field(default_factory=lambda: ["pdfua-1", "wcag-2.2"])
+    validation_profiles: list[Literal["pdfua1", "wcag"]] = Field(default_factory=lambda: ["pdfua1", "wcag"])
     idempotency_key: str | None = None
     name: str
-    size: int
+    size: int | None = None
     status: Literal["uploading", "queued", "running", "passed", "failed", "error"]
     created: float
     expires: float
