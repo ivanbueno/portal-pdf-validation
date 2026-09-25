@@ -257,6 +257,12 @@ function renderResults() {
   $("progress-row").hidden = !progressDocumentIds.size || finished >= progressDocumentIds.size;
   $("progress").max = progressDocumentIds.size || 1;
   $("progress").value = finished;
+  const remaining = progressDocumentIds.size - finished;
+  $("progress-meter").style.setProperty(
+    "--progress-complete",
+    `${progressDocumentIds.size ? (finished / progressDocumentIds.size) * 100 : 0}%`,
+  );
+  $("progress-indicator").hidden = remaining <= 0;
   $("progress-text").textContent =
     `${finished} of ${progressDocumentIds.size} files processed`;
   const signature = JSON.stringify(visible);

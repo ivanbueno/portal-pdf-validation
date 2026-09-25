@@ -121,7 +121,10 @@
             <p>Your validation results will appear here.</p>
           </div>
           <div id="progress-row" hidden>
-            <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
+            <div id="progress-meter">
+              <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
+              <span id="progress-indicator" aria-hidden="true"></span>
+            </div>
             <span id="progress-text" role="status" aria-live="polite"></span>
           </div>
           <div class="table-wrap">

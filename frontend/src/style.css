@@ -551,6 +551,46 @@ progress {
   height: 8px;
   accent-color: var(--accent);
 }
+#progress-meter {
+  position: relative;
+  min-width: 120px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+}
+#progress-meter progress {
+  display: block;
+  height: 8px;
+}
+#progress-indicator {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--progress-complete, 0%);
+  right: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+#progress-indicator::after {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 24%;
+  border-radius: 999px;
+  content: "";
+  background: color-mix(in srgb, var(--accent) 55%, transparent);
+  animation: progress-sweep 1.5s ease-in-out infinite alternate;
+}
+@keyframes progress-sweep {
+  from { transform: translateX(0); }
+  to { transform: translateX(310%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #progress-indicator::after {
+    animation: none;
+    opacity: .6;
+    transform: translateX(90%);
+  }
+}
 #progress-row {
   padding: 10px 0 18px;
 }
