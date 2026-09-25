@@ -276,7 +276,11 @@ function renderResults() {
   );
   const rows = [];
   for (const d of visible) {
-    const tr = node("tr", undefined, "document-row");
+    const tr = node(
+      "tr",
+      undefined,
+      `document-row${["uploading", "queued", "running"].includes(d.status) ? " is-processing" : ""}${d.status === "running" ? " is-running" : ""}`,
+    );
     tr.id = `row-${d.id}`;
     const file = node("td"),
       fileLayout = node("div", undefined, "document-file");
@@ -342,7 +346,13 @@ function renderResults() {
         ),
       );
       if (resultStatus !== "passed") {
-        line.append(node("span", issueCount ?? "—", "profile-count"));
+        line.append(
+        node(
+          "span",
+            issueCount ?? (d.status === "running" ? "" : "—"),
+            `profile-count${d.status === "running" ? " is-processing" : ""}`,
+          ),
+        );
       }
       status.append(line);
     }

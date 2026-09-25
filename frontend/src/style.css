@@ -837,6 +837,15 @@ button {
   padding: 24px 14px;
   background: var(--panel);
 }
+#results .document-row.is-processing > td {
+  background: color-mix(in srgb, var(--accent) 4%, var(--panel));
+}
+#results .document-row.is-processing > td:first-child {
+  box-shadow: inset 3px 0 color-mix(in srgb, var(--accent) 62%, transparent);
+}
+#results .document-row.is-running > td {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
+}
 .document-file {
   display: flex;
   align-items: flex-start;
@@ -848,6 +857,10 @@ button {
 #results .document-row:hover > td,
 #results .document-row:focus-visible > td {
   background: var(--soft);
+}
+#results .document-row.is-running:hover > td,
+#results .document-row.is-running:focus-visible > td {
+  background: color-mix(in srgb, var(--accent) 14%, var(--panel));
 }
 #results .document-row:focus-visible {
   outline: 3px solid var(--accent);
@@ -961,6 +974,26 @@ button {
   min-width: 30px;
   text-align: center;
   font-variant-numeric: tabular-nums;
+}
+.profile-line .profile-count.is-processing::before {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 5px;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  content: "";
+  vertical-align: -1px;
+  animation: profile-count-spin .8s linear infinite;
+}
+@keyframes profile-count-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .profile-line .profile-count.is-processing::before {
+    animation: none;
+  }
 }
 .split-button {
   display: inline-flex;
