@@ -1,0 +1,30 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pdf-validation-portal"
+version = "0.1.0"
+description = "Private PDF validation portal and asynchronous Azure API"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115,<1", "uvicorn>=0.34,<1", "pydantic-settings>=2.8,<3",
+  "azure-identity>=1.21,<2", "azure-storage-blob>=12.25,<13",
+  "azure-storage-queue>=12.12,<13", "azure-data-tables>=12.6,<13",
+  "defusedxml>=0.7,<1",
+]
+[project.optional-dependencies]
+dev = ["pytest>=8.3,<9", "httpx>=0.28,<1", "ruff>=0.11,<1"]
+[project.scripts]
+pdf-worker = "portal.worker:main"
+pdf-maintenance = "portal.maintenance:main"
+[tool.hatch.build.targets.wheel]
+packages = ["src/portal"]
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+markers = ["integration: requires Azurite", "verapdf: requires veraPDF Java CLI"]
+[tool.ruff]
+line-length = 110
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

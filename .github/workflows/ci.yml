@@ -1,0 +1,47 @@
+name: Verify
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: pip install -r requirements.lock && pip install --no-deps -e .
+      - run: ruff check src tests scripts && ruff format --check src tests scripts
+      - run: npm ci --prefix frontend && npm run format:check --prefix frontend && npm run build --prefix frontend
+      - run: az bicep build --file infra/main.bicep --outfile /tmp/main.json
+      - run: docker compose up -d --build
+      - name: Wait for API
+        run: |
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8000/health/ready; then exit 0; fi
+            sleep 3
+          done
+          docker compose logs --tail 100
+          exit 1
+      - name: Test on Python 3.12 with the pinned Java engine
+        run: docker compose run --rm -v "$PWD/tests:/app/tests:ro" api python -m pytest -q -p no:cacheprovider -m 'not integration'
+      - name: Emulator integration
+        run: |
+          docker compose cp api:/opt/verapdf/bin/cli-1.30.2.jar /tmp/cli.jar
+          cp .env.example .env
+          PDF_VERAPDF_JAR=/tmp/cli.jar RUN_AZURE_INTEGRATION=1 pytest -q -m integration
+      - run: cd frontend && npx playwright install --with-deps chromium && npm test
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-results
+          path: frontend/test-results
+      - run: docker compose down -v
+        if: always()

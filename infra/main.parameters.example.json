@@ -1,0 +1,27 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "prefix": {
+      "value": "pdfval"
+    },
+    "imageTag": {
+      "value": "REPLACE_WITH_IMMUTABLE_IMAGE_TAG"
+    },
+    "tenantId": {
+      "value": "REPLACE_WITH_TENANT_GUID"
+    },
+    "apiClientId": {
+      "value": "REPLACE_WITH_API_APP_GUID"
+    },
+    "portalOrigin": {
+      "value": "https://REPLACE_WITH_PORTAL_HOSTNAME"
+    },
+    "alertEmail": {
+      "value": "operations@example.com"
+    },
+    "entraClientSecret": {
+      "value": "SUPPLY_SECURELY_AT_DEPLOYMENT_DO_NOT_COMMIT"
+    }
+  }
+}

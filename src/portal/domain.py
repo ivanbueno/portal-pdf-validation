@@ -1,0 +1,138 @@
+import json
+import hashlib
+import time
+import uuid
+from fastapi import HTTPException
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
+from .config import MAX_FILE
+from .storage import Conflict
+
+
+class FileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=240)
+    size: int = Field(gt=0, le=MAX_FILE, strict=True)
+
+    @field_validator("name")
+    @classmethod
+    def filename(cls, value):
+        if any(ord(c) < 32 for c in value) or "/" in value or "\\" in value:
+            raise ValueError("Use a plain filename without path separators")
+        if not value.lower().endswith(".pdf"):
+            raise ValueError("Only .pdf files are supported")
+        return value
+
+
+PUBLIC = {
+    "id",
+    "idempotency_key",
+    "name",
+    "size",
+    "status",
+    "created",
+    "submitted",
+    "expires",
+    "error",
+    "attempts",
+    "passed",
+    "page_count",
+}
+
+
+def public(row):
+    return {key: value for key, value in row.items() if key in PUBLIC} | {
+        "profiles": json.loads(row.get("profile_summaries", "[]")),
+        "pdf_available": bool(row.get("snapshot")),
+    }
+
+
+def prefix(doc):
+    return f"{doc['PartitionKey']}/{doc['id']}/"
+
+
+def get_owned(store, owner, key, kind):
+    row = store.get(owner, key)
+    if not row or row.get("kind") != kind or row["status"] == "deleted" or row["expires"] <= time.time():
+        raise HTTPException(404, "Not found")
+    return row
+
+
+def reserve(store, settings, owner, body, key):
+    fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    key = key or str(uuid.uuid4())
+    doc_id = hashlib.sha256(f"{owner}:{key}".encode()).hexdigest()[:32]
+    doc = store.get(owner, doc_id)
+    if not doc:
+        now = time.time()
+        try:
+            doc = store.insert(
+                dict(
+                    PartitionKey=owner,
+                    RowKey=doc_id,
+                    id=doc_id,
+                    kind="document",
+                    name=body.name,
+                    size=body.size,
+                    status="uploading",
+                    created=now,
+                    expires=now + settings.upload_ttl,
+                    attempts=0,
+                    idempotency_key=key,
+                    fingerprint=fingerprint,
+                )
+            )
+        except Conflict:
+            doc = store.get(owner, doc_id)
+    if doc.get("fingerprint") != fingerprint:
+        raise HTTPException(409, "Idempotency key was already used for different document metadata")
+    if doc["status"] == "deleted" or doc["expires"] <= time.time():
+        raise HTTPException(409, "This idempotency key belongs to an expired or deleted document")
+    return doc
+
+
+def submit(store, settings, owner, doc_id):
+    doc = get_owned(store, owner, doc_id, "document")
+    if doc["status"] == "uploading":
+        try:
+            snapshot = store.snapshot(prefix(doc) + "input.pdf", doc["size"])
+        except (ResourceNotFoundError, ResourceModifiedError, ValueError):
+            raise HTTPException(409, "Upload incomplete or invalid")
+        now = time.time()
+        # One conditional write binds the snapshot and commits the durable outbox.
+        doc.update(
+            snapshot=snapshot,
+            status="queued",
+            submitted=now,
+            expires=now + settings.retention_seconds,
+            dispatched=0.0,
+        )
+        doc = store.save(doc)
+    dispatch_document(store, doc)
+    return get_owned(store, owner, doc_id, "document")
+
+
+def dispatch_document(store, doc):
+    """Reconcile interrupted queue sends; duplicate delivery is fenced by worker ETags."""
+    if (
+        doc["status"] == "queued"
+        and doc["expires"] > time.time()
+        and doc.get("dispatched", 0) < time.time() - 120
+    ):
+        store.enqueue(doc["PartitionKey"], doc["id"])
+        doc["dispatched"] = time.time()
+        store.save(doc)
+
+
+def tombstone(store, row, settings):
+    row["status"] = "deleted"
+    # Keep tombstones beyond all previously issued upload URLs and worker leases.
+    row["purge_after"] = time.time() + max(settings.upload_ttl, settings.lease_seconds) + 60
+    return store.save(row)
+
+
+def document_view(store, doc, uploads=False):
+    item = public(doc)
+    if uploads and doc["status"] == "uploading":
+        item["upload_url"], item["upload_expires"] = store.upload_url(prefix(doc) + "input.pdf")
+    return item

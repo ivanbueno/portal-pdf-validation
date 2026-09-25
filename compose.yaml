@@ -1,0 +1,37 @@
+x-runtime: &runtime
+  image: pdf-validation-portal:local
+  build: .
+  environment: &environment
+    PDF_ENVIRONMENT: local
+    PDF_DEV_IDENTITY: 'true'
+    PDF_STORAGE_CONNECTION_STRING: 'DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=cGRmLXBvcnRhbC1sb2NhbC1lbXVsYXRvci1rZXktMzI=;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;'
+    PDF_PUBLIC_BLOB_ENDPOINT: http://127.0.0.1:10000
+  depends_on:
+    storage-init:
+      condition: service_completed_successfully
+services:
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.35.0
+    command: azurite --blobHost 0.0.0.0 --queueHost 0.0.0.0 --tableHost 0.0.0.0 --skipApiVersionCheck --silent
+    environment:
+      AZURITE_ACCOUNTS: 'devstoreaccount1:cGRmLXBvcnRhbC1sb2NhbC1lbXVsYXRvci1rZXktMzI='
+    ports: ['127.0.0.1:10000:10000', '127.0.0.1:10001:10001', '127.0.0.1:10002:10002']
+    volumes: ['azurite:/data']
+  storage-init:
+    image: pdf-validation-portal:local
+    build: .
+    environment: *environment
+    command: ['python', 'scripts/init_storage.py']
+    depends_on: [azurite]
+    restart: on-failure
+  api:
+    <<: *runtime
+    ports: ['127.0.0.1:8000:8000']
+  worker:
+    <<: *runtime
+    command: ['pdf-worker', '--loop']
+  maintenance:
+    <<: *runtime
+    command: ['pdf-maintenance', '--loop']
+volumes:
+  azurite:

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<report>
+  <jobs>
+    <job>
+      <item size="10240" name="sample.pdf" isEncrypted="false" validationReports="1">
+        <validationReport profileName="PDF/UA-1" statement="PDF/UA-1" isCompliant="false">
+          <details passedRules="10" failedRules="2" passedChecks="120" failedChecks="3" />
+          <rule specification="ISO 14289-1" clause="7.1" testNumber="1" status="failed">
+            <description>Document is not tagged</description>
+            <assertions>
+              <assertion status="failed">
+                <message>Document catalog shall include MarkInfo with Marked true</message>
+                <context>root object</context>
+              </assertion>
+            </assertions>
+          </rule>
+          <rule specification="ISO 14289-1" clause="7.9" testNumber="1" status="failed">
+            <description>Primary language missing</description>
+            <assertions>
+              <assertion status="failed">
+                <message>Lang entry shall be present</message>
+                <context>page 1</context>
+              </assertion>
+            </assertions>
+          </rule>
+        </validationReport>
+      </item>
+    </job>
+  </jobs>
+</report>

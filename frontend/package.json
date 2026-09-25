@@ -1,0 +1,19 @@
+{
+  "name": "pdf-validation-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "test": "playwright test",
+    "format": "prettier --write src tests *.js index.html",
+    "format:check": "prettier --check src tests *.js index.html"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@playwright/test": "^1.51.0",
+    "prettier": "^3.9.9",
+    "vite": "^6.3.0"
+  }
+}

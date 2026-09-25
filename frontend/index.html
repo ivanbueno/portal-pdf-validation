@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="Validate PDF accessibility with PDF/UA-1 and custom WCAG checks."
+    />
+    <title>PDF Validation Portal</title>
+  </head>
+  <body>
+    <a class="skip" href="#workspace">Skip to workspace</a>
+    <main>
+      <header>
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">✓</span>
+          <div>
+            <h1>PDF Validation Portal</h1>
+            <p>Document accessibility workspace</p>
+          </div>
+        </div>
+        <div class="account">
+          <span id="identity"></span><button id="signin" hidden>Sign in</button
+          ><button id="signout" hidden>Sign out</button
+          ><button id="theme" aria-label="Change color theme">
+            Theme: system
+          </button>
+        </div>
+      </header>
+      <div
+        id="notice"
+        role="status"
+        aria-live="polite"
+        class="notice"
+        hidden
+      ></div>
+      <section id="workspace" class="card" aria-labelledby="upload-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">NEW VALIDATION</p>
+            <h2 id="upload-heading">Check your PDFs</h2>
+          </div>
+          <span class="pill neutral">Powered by veraPDF</span>
+        </div>
+        <p class="intro">
+          Upload documents to check PDF/UA-1 and WCAG 2.2 rules.
+        </p>
+        <label id="drop" class="drop"
+          ><span class="upload-icon" aria-hidden="true">↑</span
+          ><strong>Drop PDFs here to begin</strong
+          ><span
+            >or <span class="browse">choose files</span> from your
+            computer</span
+          ><small
+            >PDF only · Up to 200 files · 200 MiB per file · 2 GiB per
+            selection</small
+          ><input id="files" type="file" accept=".pdf,application/pdf" multiple
+        /></label>
+        <div id="staging" hidden>
+          <div class="toolbar">
+            <p id="staged-total"></p>
+            <button id="clear">Clear all</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>File</th>
+                  <th>Size</th>
+                  <th>Upload</th>
+                  <th><span class="sr-only">Actions</span></th>
+                </tr>
+              </thead>
+              <tbody id="staged-body"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="validation-options">
+          <div>
+            <span class="check">✓</span><strong>PDF/UA-1</strong
+            ><span>Document structure and accessibility</span>
+          </div>
+          <div>
+            <span class="check">✓</span><strong>WCAG 2.2</strong
+            ><span>Custom automated validation profile</span>
+          </div>
+        </div>
+        <div class="submit-row">
+          <button id="submit" class="primary" disabled>
+            Validate PDFs <span aria-hidden="true">→</span></button
+          ><span class="muted"
+            >Files and reports are retained for 72 hours.</span
+          >
+        </div>
+      </section>
+      <section class="activity" aria-labelledby="activity-heading">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">WORKSPACE ACTIVITY</p>
+            <h2 id="activity-heading">
+              Your files <span id="count" class="count">0</span>
+            </h2>
+          </div>
+          <button id="refresh">Refresh</button>
+        </div>
+        <div class="toolbar filters">
+          <input
+            id="search"
+            type="search"
+            placeholder="Search files"
+            aria-label="Search files"
+          /><select id="filter" aria-label="Filter status">
+            <option value="all">All outcomes</option>
+            <option value="active">In progress</option>
+            <option value="passed">Passed checks</option>
+            <option value="failed">Failed checks</option>
+            <option value="error">Processing errors</option>
+          </select>
+        </div>
+        <div id="progress-row" hidden>
+          <progress
+            id="progress"
+            max="1"
+            value="0"
+            aria-label="Files processed"
+          ></progress
+          ><span id="progress-text" role="status" aria-live="polite"></span>
+        </div>
+        <div id="empty" class="empty">
+          <span aria-hidden="true">▤</span>
+          <h3>No files yet</h3>
+          <p>Your validation results will appear here.</p>
+        </div>
+        <div class="table-wrap">
+          <table id="results" hidden>
+            <thead>
+              <tr>
+                <th>Document</th>
+                <th>Validation results</th>
+                <th><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody id="results-body"></tbody>
+          </table>
+        </div>
+        <button id="load-more" hidden>Load older files</button>
+      </section>
+      <footer>
+        <p>
+          Automated checks do not establish full accessibility or WCAG
+          conformance. Manual review is required.
+        </p>
+        <a href="/docs" target="_blank" rel="noopener">API documentation ↗</a>
+      </footer>
+    </main>
+    <dialog id="confirm" aria-labelledby="confirm-title">
+      <h2 id="confirm-title">Delete this file?</h2>
+      <p>
+        Access is removed immediately. The document and its reports will be
+        permanently removed.
+      </p>
+      <div class="submit-row">
+        <button id="confirm-cancel">Keep file</button
+        ><button class="danger" id="confirm-delete">Delete file</button>
+      </div>
+    </dialog>
+    <script type="module" src="/src/entry.js"></script>
+  </body>
+</html>
