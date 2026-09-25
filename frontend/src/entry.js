@@ -15,4 +15,10 @@ import("./app.js").catch((error) => {
     logout.textContent = "Sign out";
     notice.append(logout);
   }
+  setTimeout(() => {
+    notice.classList.add("notice-leaving");
+    setTimeout(() => {
+      notice.hidden = true;
+    }, 250);
+  }, 8000);
 });

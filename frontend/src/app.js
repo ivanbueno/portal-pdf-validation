@@ -40,12 +40,26 @@ let staged = [],
   progressDocumentIds = new Set(),
   documentLimit = 20,
   pollDelay = 2500,
-  pollTimer;
+  pollTimer,
+  noticeTimer,
+  noticeFadeTimer;
 function notify(text, error = false) {
-  $("notice").hidden = !text;
-  $("notice").textContent = text;
-  $("notice").classList.toggle("error", error);
-  $("notice").setAttribute("role", error ? "alert" : "status");
+  const notice = $("notice");
+  clearTimeout(noticeTimer);
+  clearTimeout(noticeFadeTimer);
+  notice.classList.remove("notice-leaving");
+  notice.hidden = !text;
+  notice.textContent = text;
+  notice.classList.toggle("error", error);
+  notice.setAttribute("role", error ? "alert" : "status");
+  if (text) {
+    noticeTimer = setTimeout(() => {
+      notice.classList.add("notice-leaving");
+      noticeFadeTimer = setTimeout(() => {
+        notice.hidden = true;
+      }, 250);
+    }, error ? 8000 : 5000);
+  }
 }
 function showError(error) {
   notify(error.message || String(error), true);

@@ -536,15 +536,36 @@ footer a {
   white-space: nowrap;
 }
 .notice {
+  position: fixed;
+  z-index: 1000;
+  top: 20px;
+  right: 20px;
+  width: min(420px, calc(100vw - 40px));
   border: 1px solid var(--accent);
-  background: var(--soft);
-  padding: 15px;
-  border-radius: 8px;
-  margin-bottom: 20px;
+  background: var(--surface, var(--soft));
+  color: var(--text);
+  padding: 15px 18px;
+  border-radius: 10px;
+  box-shadow: 0 12px 36px rgb(0 0 0 / 18%);
   font-size: 0.875rem;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 250ms ease, transform 250ms ease;
+}
+.notice[hidden] {
+  display: none;
+}
+.notice.notice-leaving {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 .notice.error {
   border-color: var(--bad);
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice {
+    transition: none;
+  }
 }
 progress {
   width: 100%;
