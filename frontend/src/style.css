@@ -786,8 +786,9 @@ button {
 #results thead {
   display: none;
 }
-#results th:first-child {
-  width: 45%;
+#results th:first-child,
+#results td:first-child {
+  width: 40%;
 }
 #results th:nth-child(2) {
   width: 27%;
