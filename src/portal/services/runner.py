@@ -26,8 +26,7 @@ def run_profile(path, profile, settings):
         "-1",
     ]
     args += ["--flavour", "ua1"] if profile == "pdfua-1" else ["--profile", str(settings.profile_path)]
-    if profile == "pdfua-1":
-        args += ["--extract", "page"]
+    args += ["--extract", "page"]
     args += [str(path)]
     start = time.monotonic()
     with tempfile.TemporaryDirectory() as folder:
