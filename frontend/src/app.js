@@ -227,7 +227,7 @@ function renderResults() {
   const docs = documents,
     query = $("search").value.toLowerCase(),
     filter = $("filter").value;
-  const visible = docs.filter(
+  const matching = docs.filter(
     (d) =>
       d.name.toLowerCase().includes(query) &&
       (filter === "all" ||
@@ -235,6 +235,7 @@ function renderResults() {
           ? ["uploading", "queued", "running"].includes(d.status)
           : d.status === filter)),
   );
+  const visible = matching.slice(0, documentLimit);
   $("count").textContent = docs.length;
   $("empty").hidden = !!visible.length;
   $("results").hidden = !visible.length;
@@ -396,14 +397,16 @@ async function refresh() {
   if (!account()) return;
   const collected = [];
   let total = 0;
-  for (let offset = 0; offset < documentLimit; offset += 100) {
+  // Load the complete result set so summary cards can represent every file.
+  // The table still uses documentLimit to control how many matching rows render.
+  for (let offset = 0; ; offset += 100) {
     const data = await api(
-      `/documents?offset=${offset}&limit=${Math.min(100, documentLimit - offset)}`,
+      `/documents?offset=${offset}&limit=100`,
     );
     collected.push(...data.items);
     total = data.total;
     processedDocumentCount = data.processed;
-    if (collected.length >= total) break;
+    if (collected.length >= total || !data.items.length) break;
   }
   documents = collected;
   $("load-more").hidden = total <= documentLimit;
