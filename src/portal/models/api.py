@@ -38,6 +38,7 @@ class DocumentView(BaseModel):
 class DocumentPage(BaseModel):
     items: list[DocumentView]
     total: int
+    processed: int
 
 
 class DocumentDetail(DocumentView):

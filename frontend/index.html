@@ -96,10 +96,6 @@
           >
         </div>
       </section>
-      <div id="progress-row" hidden>
-        <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
-        <span id="progress-text" role="status" aria-live="polite"></span>
-      </div>
       <section class="activity" aria-labelledby="activity-heading">
         <div class="section-head">
           <div>
@@ -123,6 +119,10 @@
             <span aria-hidden="true">▤</span>
             <h3>No files yet</h3>
             <p>Your validation results will appear here.</p>
+          </div>
+          <div id="progress-row" hidden>
+            <progress id="progress" max="1" value="0" aria-label="Files processed"></progress>
+            <span id="progress-text" role="status" aria-live="polite"></span>
           </div>
           <div class="table-wrap">
             <table id="results" hidden>

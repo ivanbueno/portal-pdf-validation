@@ -36,6 +36,7 @@ const action = (text, handler, className) => {
 let staged = [],
   documents = [],
   busy = false,
+  processedDocumentCount = 0,
   progressDocumentIds = new Set(),
   documentLimit = 20,
   pollDelay = 2500,
@@ -116,11 +117,36 @@ $("drop").ondragover = (e) => {
   $("drop").classList.add("dragover");
 };
 $("drop").ondragleave = () => $("drop").classList.remove("dragover");
-$("drop").ondrop = (e) => {
-  e.preventDefault();
+let fileDragDepth = 0;
+const isFileDrag = (event) => Array.from(event.dataTransfer?.types || []).includes("Files");
+function clearFileDrag() {
+  fileDragDepth = 0;
+  document.body.classList.remove("file-dragging");
   $("drop").classList.remove("dragover");
-  addFiles(e.dataTransfer.files);
-};
+}
+window.addEventListener("dragenter", (event) => {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  fileDragDepth++;
+  document.body.classList.add("file-dragging");
+});
+window.addEventListener("dragover", (event) => {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "copy";
+});
+window.addEventListener("dragleave", (event) => {
+  if (!isFileDrag(event)) return;
+  fileDragDepth = Math.max(0, fileDragDepth - 1);
+  if (!fileDragDepth) clearFileDrag();
+});
+window.addEventListener("drop", (event) => {
+  if (!isFileDrag(event)) return;
+  event.preventDefault();
+  clearFileDrag();
+  addFiles(event.dataTransfer.files);
+});
+window.addEventListener("blur", clearFileDrag);
 async function cancelUpload(item) {
   if (!item.doc) return;
   try {
@@ -144,6 +170,8 @@ $("clear").onclick = async () => {
 };
 $("submit").onclick = async () => {
   busy = true;
+  $("submit").classList.add("is-submitting");
+  $("submit").setAttribute("aria-busy", "true");
   progressDocumentIds = new Set();
   notify("Preparing your documents…");
   $("submit").textContent = "Uploading…";
@@ -182,6 +210,8 @@ $("submit").onclick = async () => {
     renderStaging();
   }
   busy = false;
+  $("submit").classList.remove("is-submitting");
+  $("submit").removeAttribute("aria-busy");
   $("submit").textContent = staged.length
     ? "Retry remaining files"
     : "Validate PDFs →";
@@ -215,7 +245,7 @@ function renderResults() {
     finished = submitted.filter((d) =>
       ["passed", "failed", "error"].includes(d.status),
     ).length;
-  $("stat-processed").textContent = finished;
+  $("stat-processed").textContent = processedDocumentCount;
   $("stat-wcag").textContent = docs.filter((d) =>
     d.profiles?.some((p) => p.profile === "wcag-2.2" && p.status === "passed"),
   ).length;
@@ -353,7 +383,7 @@ function renderResults() {
     tr.append(file, status, actions);
     const detail = detailRows.get(d.id) || node("tr", undefined, "detail-row");
     detail.id = `details-${d.id}`;
-    detail.hidden = !expanded.has(d.id);
+    detail.hidden = !expanded.has(d.id) && !detail.classList.contains("detail-closing");
     detailRows.set(d.id, detail);
     rows.push(tr, detail);
   }
@@ -372,6 +402,7 @@ async function refresh() {
     );
     collected.push(...data.items);
     total = data.total;
+    processedDocumentCount = data.processed;
     if (collected.length >= total) break;
   }
   documents = collected;
@@ -411,11 +442,30 @@ function outcome(result, status) {
   return `${result.passed ? "Pass" : "Fail"} · ${result.summary?.errors ?? "Unknown"} ${result.summary?.errors === 1 ? "error" : "errors"}`;
 }
 async function toggleDetail(doc, forceOpen = false) {
-  if (expanded.has(doc.id) && !forceOpen) expanded.delete(doc.id);
+  const closing = expanded.has(doc.id) && !forceOpen;
+  const detail = detailRows.get(doc.id);
+  if (closing) detail?.classList.add("detail-closing");
+  if (closing) expanded.delete(doc.id);
   else expanded.add(doc.id);
   renderedSignature = "";
   renderResults();
-  if (expanded.has(doc.id)) await loadDetail(doc);
+  if (closing) {
+    const row = detailRows.get(doc.id);
+    window.setTimeout(() => {
+      if (!row || expanded.has(doc.id)) return;
+      row.hidden = true;
+      row.classList.remove("detail-closing");
+    }, 180);
+  } else {
+    const row = detailRows.get(doc.id);
+    row?.classList.remove("detail-closing");
+    row?.classList.add("detail-enter");
+    window.setTimeout(() => {
+      if (!row) return;
+      row.classList.remove("detail-enter");
+    }, 220);
+    await loadDetail(doc);
+  }
 }
 async function loadDetail(doc, offset = 0) {
   const row = detailRows.get(doc.id);
@@ -425,7 +475,7 @@ async function loadDetail(doc, offset = 0) {
   const content = node("div", undefined, "expanded-report");
   cell.append(content);
   row.replaceChildren(cell);
-  content.append(node("p", "Loading validation details…", "muted"));
+  content.append(node("p", "Loading validation details…", "muted loading-message"));
   content.setAttribute("aria-live", "polite");
   try {
     const [d, groups] = await Promise.all([

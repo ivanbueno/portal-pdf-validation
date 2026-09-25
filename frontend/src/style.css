@@ -50,6 +50,21 @@
 body {
   margin: 0;
 }
+body.file-dragging::after {
+  content: "Drop PDF files anywhere to add them";
+  position: fixed;
+  inset: 14px;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  border: 3px dashed var(--accent);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--panel) 88%, transparent);
+  color: var(--accent);
+  font-size: clamp(1.1rem, 2.5vw, 1.5rem);
+  font-weight: 700;
+  pointer-events: none;
+}
 main {
   max-width: 1120px;
   margin: auto;
@@ -284,8 +299,15 @@ h3 {
 .run-options { border-bottom: 1px solid var(--line); }
 .run-options > summary { display: flex; align-items: center; gap: 12px; padding: 18px 0; cursor: pointer; list-style: none; }
 .run-options > summary::-webkit-details-marker { display: none; }
-.run-options > summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.4rem; }
-.run-options[open] > summary::after { content: "⌄"; }
+.run-options > summary::after { content: "›"; margin-left: auto; color: var(--muted); font-size: 1.4rem; transition: transform .2s ease; }
+.run-options[open] > summary::after { transform: rotate(90deg); }
+.run-options { interpolate-size: allow-keywords; }
+.run-options::details-content {
+  block-size: 0;
+  overflow: clip;
+  transition: block-size .24s ease, content-visibility .24s allow-discrete;
+}
+.run-options[open]::details-content { block-size: auto; }
 .run-options > summary strong { font-size: 1rem; }
 .options-icon { color: var(--accent); font-size: 1.25rem; }
 .validation-options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; border: 0; border-top: 1px solid var(--line); margin: 0; padding: 20px 0; }
@@ -303,6 +325,22 @@ h3 {
   border-color: #245dab;
   padding: 12px 20px;
 }
+.primary.is-submitting {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+.primary.is-submitting::before {
+  content: "";
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: portal-spin .8s linear infinite;
+}
+@keyframes portal-spin { to { transform: rotate(360deg); } }
 .primary:hover {
   background: #194b8e;
   color: white;
@@ -313,6 +351,21 @@ h3 {
 .muted {
   color: var(--muted);
   font-size: 0.8125rem;
+}
+.loading-message {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+}
+.loading-message::before {
+  content: "";
+  width: 13px;
+  height: 13px;
+  flex: 0 0 13px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: portal-spin .8s linear infinite;
 }
 .activity {
   margin-top: 38px;
@@ -684,6 +737,21 @@ dialog::backdrop {
   button {
     transition: border-color 0.15s;
   }
+  #progress-row:not([hidden]) {
+    animation: progress-enter .24s ease-out both;
+  }
+  @keyframes progress-enter {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
 /* Keep enlarged text and offscreen table labels inside their owning surface. */
 .table-wrap {
@@ -779,6 +847,7 @@ button {
   font-size: 0.75rem;
   font-weight: 650;
   white-space: nowrap;
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease;
 }
 .profile-line > span {
   padding: 5px 9px;
@@ -884,6 +953,16 @@ button {
   grid-template-columns: minmax(180px, 1fr) minmax(0, 2.5fr);
   gap: 28px;
 }
+@keyframes detail-enter {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes detail-exit {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-5px); }
+}
+.detail-row.detail-enter .expanded-report { animation: detail-enter .2s ease-out both; }
+.detail-row.detail-closing .expanded-report { animation: detail-exit .16s ease-in both; }
 .validation-summary {
   align-self: start;
   padding: 20px;

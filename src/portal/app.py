@@ -168,7 +168,8 @@ def create_app(settings=None, storage=None):
                 item["profiles"] = [{k: v for k, v in r.items() if k != "issues"} for r in saved["results"]]
                 item["page_count"] = saved.get("page_count")
             items.append(item)
-        return {"items": items, "total": len(rows)}
+        processed = sum(row["status"] in {"passed", "failed", "error"} for row in rows)
+        return {"items": items, "total": len(rows), "processed": processed}
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
     def renew_upload(doc_id: str, principal: Owner):
