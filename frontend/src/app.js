@@ -445,7 +445,6 @@ async function poll() {
   }
   pollTimer = setTimeout(poll, pollDelay);
 }
-$("refresh").onclick = () => refresh().catch(showError);
 $("search").oninput = renderResults;
 $("filter").onchange = renderResults;
 $("load-more").onclick = () => {
