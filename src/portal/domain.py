@@ -157,20 +157,20 @@ def submit(store, settings, owner, doc_id):
             dispatched=0.0,
         )
         doc = store.save(doc)
-    dispatch_document(store, doc)
-    return get_owned(store, owner, doc_id, "document")
+    return dispatch_document(store, doc)
 
 
 def dispatch_document(store, doc):
-    """Reconcile interrupted queue sends; duplicate delivery is fenced by worker ETags."""
-    if (
-        doc["status"] == "queued"
-        and doc["expires"] > time.time()
-        and doc.get("dispatched", 0) < time.time() - 120
-    ):
+    """Reconcile interrupted queue sends; duplicate delivery is fenced by worker ETags.
+
+    Returns the current row: the saved one after a send, otherwise `doc` unchanged.
+    """
+    now = time.time()
+    if doc["status"] == "queued" and doc["expires"] > now and doc.get("dispatched", 0) < now - 120:
         store.enqueue(doc["PartitionKey"], doc["id"])
-        doc["dispatched"] = time.time()
-        store.save(doc)
+        doc["dispatched"] = now
+        return store.save(doc)
+    return doc
 
 
 def tombstone(store, row, settings):

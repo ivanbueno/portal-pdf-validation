@@ -16,6 +16,11 @@ class Conflict(Exception):
     pass
 
 
+def _stored(entity):
+    """Table Storage omits null properties and our private `_` bookkeeping keys."""
+    return {k: v for k, v in entity.items() if not k.startswith("_") and v is not None}
+
+
 class Storage:
     def __init__(self, settings):
         self.settings = settings
@@ -53,17 +58,20 @@ class Storage:
         except ResourceNotFoundError:
             return None
 
+    # Writes return the stored properties plus the response ETag, which is exactly
+    # what a re-read would yield, without the extra round-trip.
     def insert(self, entity):
+        body = _stored(entity)
         try:
-            self.table.create_entity(entity)
+            metadata = self.table.create_entity(body)
         except ResourceExistsError:
             raise Conflict()
-        return self.get(entity["PartitionKey"], entity["RowKey"])
+        return body | {"_etag": metadata["etag"]}
 
     def save(self, entity):
-        body = {k: v for k, v in entity.items() if not k.startswith("_") and v is not None}
+        body = _stored(entity)
         try:
-            self.table.update_entity(
+            metadata = self.table.update_entity(
                 body,
                 mode=UpdateMode.REPLACE,
                 etag=entity["_etag"],
@@ -71,7 +79,7 @@ class Storage:
             )
         except (ResourceModifiedError, ResourceNotFoundError):
             raise Conflict()
-        return self.get(entity["PartitionKey"], entity["RowKey"])
+        return body | {"_etag": metadata["etag"]}
 
     def remove(self, entity):
         try:
