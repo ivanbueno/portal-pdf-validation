@@ -4,7 +4,7 @@ import time
 import uuid
 from urllib.parse import quote
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -25,6 +25,10 @@ from .storage import Storage, Conflict
 from .services.grouping import group_issues
 from .middleware import MetadataBodyLimit
 from .models.api import DocumentView, DocumentPage, DocumentDetail, UploadGrant
+
+TERMINAL = {"passed", "failed", "error"}
+ACTIVE = {"uploading", "queued", "running"}
+STAT_KEYS = {"wcag-2.2": "wcag_passed", "pdfua-1": "pdfua_passed"}
 
 log = logging.getLogger("portal")
 log.setLevel(logging.INFO)
@@ -152,11 +156,34 @@ def create_app(settings=None, storage=None):
         return public(submit(storage, settings, principal, doc_id))
 
     @app.get("/api/v1/documents", response_model=DocumentPage, response_model_exclude_none=True)
-    def list_documents(principal: Owner, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    def list_documents(
+        principal: Owner,
+        offset: int = Query(0, ge=0),
+        limit: int = Query(20, ge=1, le=100),
+        q: str = Query("", max_length=240),
+        status: Literal["all", "active", "passed", "failed", "error"] = "all",
+    ):
+        # One partition scan serves the page, the filtered total, and the dashboard statistics.
         rows = [
             r
             for r in storage.rows(principal)
             if r.get("kind") == "document" and r["status"] != "deleted" and r["expires"] > time.time()
+        ]
+        stats = dict.fromkeys(("processed", "pending", "wcag_passed", "pdfua_passed", "pages"), 0)
+        stats["documents"] = len(rows)
+        for row in rows:
+            stats["processed"] += row["status"] in TERMINAL
+            stats["pending"] += row["status"] in {"queued", "running"}
+            stats["pages"] += row.get("page_count") or 0
+            for summary in json.loads(row.get("profile_summaries", "[]")):
+                if summary.get("status") == "passed" and summary.get("profile") in STAT_KEYS:
+                    stats[STAT_KEYS[summary["profile"]]] += 1
+        query = q.lower()
+        rows = [
+            r
+            for r in rows
+            if query in r["name"].lower()
+            and (status == "all" or (r["status"] in ACTIVE if status == "active" else r["status"] == status))
         ]
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
         items = []
@@ -168,8 +195,7 @@ def create_app(settings=None, storage=None):
                 item["profiles"] = [{k: v for k, v in r.items() if k != "issues"} for r in saved["results"]]
                 item["page_count"] = saved.get("page_count")
             items.append(item)
-        processed = sum(row["status"] in {"passed", "failed", "error"} for row in rows)
-        return {"items": items, "total": len(rows), "processed": processed}
+        return {"items": items, "total": len(rows), "processed": stats["processed"], "stats": stats}
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
     def renew_upload(doc_id: str, principal: Owner):

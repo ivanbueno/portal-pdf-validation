@@ -35,10 +35,20 @@ class DocumentView(BaseModel):
     upload_expires: float | None = None
 
 
+class DocumentStats(BaseModel):
+    documents: int
+    processed: int
+    pending: int
+    wcag_passed: int
+    pdfua_passed: int
+    pages: int
+
+
 class DocumentPage(BaseModel):
     items: list[DocumentView]
     total: int
     processed: int
+    stats: DocumentStats
 
 
 class DocumentDetail(DocumentView):

@@ -250,6 +250,29 @@ def test_generated_key_survives_grant_failure(client, store, monkeypatch):
     assert replay.status_code == 201 and len(store.rows()) == 1
 
 
+def test_history_filters_and_statistics_cover_all_documents(client, store, settings, uploaded):
+    other = client.post(BASE + "/documents", json={"name": "Other.pdf", "size": 9}).json()
+    assert client.post(f"{BASE}/documents/{uploaded['id']}/submit").status_code == 202
+    assert process_document(store, settings, "local-development", uploaded["id"], successful_runner)
+    page = client.get(BASE + "/documents?limit=1").json()
+    assert page["total"] == 2 and len(page["items"]) == 1
+    assert page["stats"] == {
+        "documents": 2,
+        "processed": 1,
+        "pending": 0,
+        "wcag_passed": 1,
+        "pdfua_passed": 1,
+        "pages": 0,
+    }
+    assert [d["id"] for d in client.get(BASE + "/documents?q=OTHER").json()["items"]] == [other["id"]]
+    active = client.get(BASE + "/documents?status=active").json()
+    assert [d["id"] for d in active["items"]] == [other["id"]] and active["total"] == 1
+    assert active["stats"]["documents"] == 2
+    assert client.get(BASE + "/documents?status=passed").json()["total"] == 1
+    assert client.get(BASE + "/documents?status=failed").json()["items"] == []
+    assert client.get(BASE + "/documents?status=deleted").status_code == 422
+
+
 def test_independent_submissions_and_history_pagination(client, store, settings, uploaded):
     other = client.post(BASE + "/documents", json={"name": "missing.pdf", "size": 9}).json()
     assert client.post(f"{BASE}/documents/{other['id']}/submit").status_code == 409

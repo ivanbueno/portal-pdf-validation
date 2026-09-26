@@ -18,6 +18,7 @@ const labels = {
   failed: "Failed checks",
   error: "Processing error",
 };
+const TERMINAL = ["passed", "failed", "error"];
 const size = (bytes) =>
   bytes < 1048576
     ? `${(bytes / 1024).toFixed(1)} KiB`
@@ -37,8 +38,8 @@ const action = (text, handler, className) => {
 let staged = [],
   documents = [],
   busy = false,
-  processedDocumentCount = 0,
-  progressDocumentIds = new Set(),
+  stats = {},
+  progressStatuses = new Map(),
   documentLimit = 20,
   pollDelay = 2500,
   pollTimer,
@@ -194,7 +195,7 @@ $("submit").onclick = async () => {
   busy = true;
   $("submit").classList.add("is-submitting");
   $("submit").setAttribute("aria-busy", "true");
-  progressDocumentIds = new Set();
+  progressStatuses = new Map();
   notify("Preparing your documents…");
   $("submit").textContent = "Uploading…";
   renderStaging();
@@ -226,7 +227,7 @@ $("submit").onclick = async () => {
         }
         await api(`/documents/${item.doc.id}/submit`, { method: "POST" });
       }
-      progressDocumentIds.add(item.doc.id);
+      progressStatuses.set(item.doc.id, "queued");
       submitted++;
       staged.splice(staged.indexOf(item), 1);
     } catch (error) {
@@ -246,55 +247,36 @@ $("submit").onclick = async () => {
     `${submitted} files submitted. ${staged.length ? `${staged.length} files need attention; retry the remaining files.` : "You can leave this page and return to your results."}`,
     !!staged.length,
   );
-  documentLimit = Math.max(documentLimit, progressDocumentIds.size);
+  documentLimit = Math.max(documentLimit, progressStatuses.size);
   await refresh().catch(showError);
 };
 function renderResults() {
-  const docs = documents,
-    query = $("search").value.toLowerCase(),
-    filter = $("filter").value;
-  const matching = docs.filter(
-    (d) =>
-      d.name.toLowerCase().includes(query) &&
-      (filter === "all" ||
-        (filter === "active"
-          ? ["uploading", "queued", "running"].includes(d.status)
-          : d.status === filter)),
-  );
-  const visible = matching.slice(0, documentLimit);
-  $("count").textContent = docs.length;
+  const visible = documents.slice(0, documentLimit);
+  $("count").textContent = stats.documents ?? 0;
   $("empty").hidden = !!visible.length;
   $("results").hidden = !visible.length;
-  $("empty").querySelector("h3").textContent = docs.length
+  $("empty").querySelector("h3").textContent = stats.documents
     ? "No matching files"
     : "No files yet";
-  const submitted = docs.filter((d) => progressDocumentIds.has(d.id)),
-    finished = submitted.filter((d) =>
-      ["passed", "failed", "error"].includes(d.status),
-    ).length;
-  $("stat-processed").textContent = processedDocumentCount;
-  $("stat-wcag").textContent = docs.filter((d) =>
-    d.profiles?.some((p) => p.profile === "wcag-2.2" && p.status === "passed"),
+  const finished = [...progressStatuses.values()].filter((status) =>
+    TERMINAL.includes(status),
   ).length;
-  $("stat-ua").textContent = docs.filter((d) =>
-    d.profiles?.some((p) => p.profile === "pdfua-1" && p.status === "passed"),
-  ).length;
-  $("stat-pages").textContent = docs.reduce(
-    (total, d) => total + (d.page_count || 0),
-    0,
-  );
+  $("stat-processed").textContent = stats.processed ?? 0;
+  $("stat-wcag").textContent = stats.wcag_passed ?? 0;
+  $("stat-ua").textContent = stats.pdfua_passed ?? 0;
+  $("stat-pages").textContent = stats.pages ?? 0;
   $("progress-row").hidden =
-    !progressDocumentIds.size || finished >= progressDocumentIds.size;
-  $("progress").max = progressDocumentIds.size || 1;
+    !progressStatuses.size || finished >= progressStatuses.size;
+  $("progress").max = progressStatuses.size || 1;
   $("progress").value = finished;
-  const remaining = progressDocumentIds.size - finished;
+  const remaining = progressStatuses.size - finished;
   $("progress-meter").style.setProperty(
     "--progress-complete",
-    `${progressDocumentIds.size ? (finished / progressDocumentIds.size) * 100 : 0}%`,
+    `${progressStatuses.size ? (finished / progressStatuses.size) * 100 : 0}%`,
   );
   $("progress-indicator").hidden = remaining <= 0;
   $("progress-text").textContent =
-    `${finished} of ${progressDocumentIds.size} files processed`;
+    `${finished} of ${progressStatuses.size} files processed`;
   const signature = JSON.stringify(visible);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
@@ -448,40 +430,68 @@ function renderResults() {
   else if (focused?.id)
     document.getElementById(focused.id)?.focus({ preventScroll: true });
 }
+// The API filters and totals server-side, so only the rows on screen are fetched.
+async function fetchDocuments(count, filters = {}) {
+  const items = [];
+  let data;
+  do {
+    const params = new URLSearchParams({
+      ...filters,
+      offset: items.length,
+      limit: Math.min(100, count - items.length),
+    });
+    data = await api(`/documents?${params}`);
+    items.push(...data.items);
+  } while (items.length < Math.min(count, data.total) && data.items.length);
+  return { ...data, items };
+}
+let refreshSequence = 0;
 async function refresh() {
   if (!account()) return;
-  const collected = [];
-  let total = 0;
-  // Load the complete result set so summary cards can represent every file.
-  // The table still uses documentLimit to control how many matching rows render.
-  for (let offset = 0; ; offset += 100) {
-    const data = await api(`/documents?offset=${offset}&limit=100`);
-    collected.push(...data.items);
-    total = data.total;
-    processedDocumentCount = data.processed;
-    if (collected.length >= total || !data.items.length) break;
-  }
-  documents = collected;
-  $("load-more").hidden = total <= documentLimit;
+  const sequence = ++refreshSequence;
+  const query = $("search").value.trim(),
+    filter = $("filter").value;
+  const filters = {
+    ...(query ? { q: query } : {}),
+    ...(filter !== "all" ? { status: filter } : {}),
+  };
+  const data = await fetchDocuments(documentLimit, filters);
+  const tracked = [...progressStatuses.values()].some(
+    (status) => !TERMINAL.includes(status),
+  );
+  // Newly submitted files are the newest rows; fetch them unfiltered only
+  // while a filtered view could hide unfinished progress.
+  const progressItems =
+    tracked && (query || filter !== "all")
+      ? (await fetchDocuments(progressStatuses.size)).items
+      : data.items;
+  // A newer search or poll started while this one was in flight.
+  if (sequence !== refreshSequence) return;
+  for (const d of progressItems)
+    if (progressStatuses.has(d.id)) progressStatuses.set(d.id, d.status);
+  documents = data.items;
+  stats = data.stats;
+  $("load-more").hidden = data.total <= documentLimit;
   renderResults();
+}
+let searchTimer;
+function refreshFilters() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => refresh().catch(showError), 250);
 }
 async function poll() {
   try {
     if (document.visibilityState === "visible") {
       await refresh();
-      pollDelay = documents.some((d) =>
-        ["running", "queued"].includes(d.status),
-      )
-        ? 2500
-        : 15000;
+      pollDelay = stats.pending ? 2500 : 15000;
     }
   } catch {
     pollDelay = Math.min(pollDelay * 2, 60000);
   }
   pollTimer = setTimeout(poll, pollDelay);
 }
-$("search").oninput = renderResults;
-$("filter").onchange = renderResults;
+$("search").oninput = refreshFilters;
+$("filter").onchange = refreshFilters;
 $("load-more").onclick = () => {
   documentLimit += 20;
   refresh().catch(showError);
