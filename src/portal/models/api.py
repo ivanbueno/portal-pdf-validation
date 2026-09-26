@@ -38,7 +38,12 @@ class DocumentView(BaseModel):
 class DocumentPage(BaseModel):
     items: list[DocumentView]
     total: int
+    matching: int
     processed: int
+    ua_passed: int
+    wcag_passed: int
+    pages: int
+    active_ids: list[str]
 
 
 class DocumentDetail(DocumentView):

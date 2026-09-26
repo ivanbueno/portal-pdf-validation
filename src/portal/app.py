@@ -4,7 +4,7 @@ import time
 import uuid
 from urllib.parse import quote
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -17,6 +17,8 @@ from .domain import (
     submit,
     get_owned,
     document_view,
+    document_stats,
+    matches,
     public,
     prefix,
     tombstone,
@@ -152,15 +154,24 @@ def create_app(settings=None, storage=None):
         return public(submit(storage, settings, principal, doc_id))
 
     @app.get("/api/v1/documents", response_model=DocumentPage, response_model_exclude_none=True)
-    def list_documents(principal: Owner, offset: int = Query(0, ge=0), limit: int = Query(20, ge=1, le=100)):
+    def list_documents(
+        principal: Owner,
+        offset: int = Query(0, ge=0),
+        limit: int = Query(20, ge=1, le=100),
+        q: str = Query("", max_length=240),
+        status: Literal["all", "active", "passed", "failed", "error"] = "all",
+    ):
+        now = time.time()
         rows = [
             r
             for r in storage.rows(principal)
-            if r.get("kind") == "document" and r["status"] != "deleted" and r["expires"] > time.time()
+            if r.get("kind") == "document" and r["status"] != "deleted" and r["expires"] > now
         ]
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
+        query = q.strip().casefold()
+        matching = [r for r in rows if matches(r, query, status)]
         items = []
-        for row in rows[offset : offset + limit]:
+        for row in matching[offset : offset + limit]:
             item = public(row)
             # Reports created before summary metadata was introduced remain visible.
             if row.get("report") and "profile_summaries" not in row:
@@ -168,8 +179,7 @@ def create_app(settings=None, storage=None):
                 item["profiles"] = [{k: v for k, v in r.items() if k != "issues"} for r in saved["results"]]
                 item["page_count"] = saved.get("page_count")
             items.append(item)
-        processed = sum(row["status"] in {"passed", "failed", "error"} for row in rows)
-        return {"items": items, "total": len(rows), "processed": processed}
+        return {"items": items, "total": len(rows), "matching": len(matching)} | document_stats(rows)
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
     def renew_upload(doc_id: str, principal: Owner):

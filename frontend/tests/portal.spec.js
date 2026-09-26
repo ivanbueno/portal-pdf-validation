@@ -212,7 +212,18 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
     route.fulfill(
       expired
         ? { status: 401, json: { detail: "Session expired" } }
-        : { json: { items: [], total: 0, processed: 0 } },
+        : {
+            json: {
+              items: [],
+              total: 0,
+              matching: 0,
+              processed: 0,
+              ua_passed: 0,
+              wcag_passed: 0,
+              pages: 0,
+              active_ids: [],
+            },
+          },
     ),
   );
   await page.route("**/.auth/**", (route) =>

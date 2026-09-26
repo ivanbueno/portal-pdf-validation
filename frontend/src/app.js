@@ -37,7 +37,7 @@ const action = (text, handler, className) => {
 let staged = [],
   documents = [],
   busy = false,
-  processedDocumentCount = 0,
+  stats = { total: 0, active_ids: [] },
   progressDocumentIds = new Set(),
   documentLimit = 20,
   pollDelay = 2500,
@@ -190,6 +190,48 @@ $("clear").onclick = async () => {
     showError(e);
   }
 };
+const UPLOAD_CONCURRENCY = 3;
+let stagingFrame;
+function scheduleStagingRender() {
+  stagingFrame ||= requestAnimationFrame(() => {
+    stagingFrame = undefined;
+    renderStaging();
+  });
+}
+async function submitItem(item) {
+  let status, uploadUrl;
+  if (item.doc) {
+    // A retry: the upload or submission may already have reached the server.
+    ({ status } = await api(`/documents/${item.doc.id}`));
+  } else {
+    item.doc = await api("/documents", {
+      method: "POST",
+      headers: item.key ? { "Idempotency-Key": item.key } : {},
+      body: JSON.stringify({
+        name: item.file.name,
+        size: item.file.size,
+        profiles: (item.profiles ||= selectedProfiles()),
+      }),
+    });
+    ({ status, upload_url: uploadUrl } = item.doc);
+  }
+  item.key = item.doc.idempotency_key;
+  if (status === "uploading") {
+    if (!item.uploaded) {
+      uploadUrl ||= (
+        await api(`/documents/${item.doc.id}/upload-url`, { method: "POST" })
+      ).upload_url;
+      await upload(uploadUrl, item.file, (p) => {
+        item.state = `${p}%`;
+        scheduleStagingRender();
+      });
+      item.uploaded = true;
+    }
+    await api(`/documents/${item.doc.id}/submit`, { method: "POST" });
+  }
+  progressDocumentIds.add(item.doc.id);
+  staged.splice(staged.indexOf(item), 1);
+}
 $("submit").onclick = async () => {
   busy = true;
   $("submit").classList.add("is-submitting");
@@ -199,42 +241,21 @@ $("submit").onclick = async () => {
   $("submit").textContent = "Uploading…";
   renderStaging();
   let submitted = 0;
+  const pending = [...staged];
   // Reserve, upload, and submit independently; one failure never blocks another file.
-  for (const item of [...staged]) {
-    try {
-      item.doc ||= await api("/documents", {
-        method: "POST",
-        headers: item.key ? { "Idempotency-Key": item.key } : {},
-        body: JSON.stringify({
-          name: item.file.name,
-          size: item.file.size,
-          profiles: (item.profiles ||= selectedProfiles()),
-        }),
-      });
-      item.key = item.doc.idempotency_key;
-      const current = await api(`/documents/${item.doc.id}`);
-      if (current.status === "uploading") {
-        if (!item.uploaded) {
-          const grant = await api(`/documents/${item.doc.id}/upload-url`, {
-            method: "POST",
-          });
-          await upload(grant.upload_url, item.file, (p) => {
-            item.state = `${p}%`;
-            renderStaging();
-          });
-          item.uploaded = true;
-        }
-        await api(`/documents/${item.doc.id}/submit`, { method: "POST" });
+  const uploader = async () => {
+    for (let item; (item = pending.shift());) {
+      try {
+        await submitItem(item);
+        submitted++;
+      } catch (error) {
+        item.key ||= error.idempotencyKey;
+        item.state = error.message || "Retry required";
       }
-      progressDocumentIds.add(item.doc.id);
-      submitted++;
-      staged.splice(staged.indexOf(item), 1);
-    } catch (error) {
-      item.key ||= error.idempotencyKey;
-      item.state = error.message || "Retry required";
+      renderStaging();
     }
-    renderStaging();
-  }
+  };
+  await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, uploader));
   busy = false;
   $("submit").classList.remove("is-submitting");
   $("submit").removeAttribute("aria-busy");
@@ -250,39 +271,21 @@ $("submit").onclick = async () => {
   await refresh().catch(showError);
 };
 function renderResults() {
-  const docs = documents,
-    query = $("search").value.toLowerCase(),
-    filter = $("filter").value;
-  const matching = docs.filter(
-    (d) =>
-      d.name.toLowerCase().includes(query) &&
-      (filter === "all" ||
-        (filter === "active"
-          ? ["uploading", "queued", "running"].includes(d.status)
-          : d.status === filter)),
-  );
-  const visible = matching.slice(0, documentLimit);
-  $("count").textContent = docs.length;
+  // The server has already applied search, filter, and documentLimit.
+  const visible = documents;
+  $("count").textContent = stats.total;
   $("empty").hidden = !!visible.length;
   $("results").hidden = !visible.length;
-  $("empty").querySelector("h3").textContent = docs.length
+  $("empty").querySelector("h3").textContent = stats.total
     ? "No matching files"
     : "No files yet";
-  const submitted = docs.filter((d) => progressDocumentIds.has(d.id)),
-    finished = submitted.filter((d) =>
-      ["passed", "failed", "error"].includes(d.status),
-    ).length;
-  $("stat-processed").textContent = processedDocumentCount;
-  $("stat-wcag").textContent = docs.filter((d) =>
-    d.profiles?.some((p) => p.profile === "wcag-2.2" && p.status === "passed"),
-  ).length;
-  $("stat-ua").textContent = docs.filter((d) =>
-    d.profiles?.some((p) => p.profile === "pdfua-1" && p.status === "passed"),
-  ).length;
-  $("stat-pages").textContent = docs.reduce(
-    (total, d) => total + (d.page_count || 0),
-    0,
-  );
+  // Deleted or expired submissions count as finished so progress never stalls.
+  const active = new Set(stats.active_ids),
+    finished = [...progressDocumentIds].filter((id) => !active.has(id)).length;
+  $("stat-processed").textContent = stats.processed;
+  $("stat-wcag").textContent = stats.wcag_passed;
+  $("stat-ua").textContent = stats.ua_passed;
+  $("stat-pages").textContent = stats.pages;
   $("progress-row").hidden =
     !progressDocumentIds.size || finished >= progressDocumentIds.size;
   $("progress").max = progressDocumentIds.size || 1;
@@ -448,40 +451,50 @@ function renderResults() {
   else if (focused?.id)
     document.getElementById(focused.id)?.focus({ preventScroll: true });
 }
+let refreshSequence = 0;
 async function refresh() {
   if (!account()) return;
+  const sequence = ++refreshSequence;
+  const params = new URLSearchParams({
+    q: $("search").value.trim(),
+    status: $("filter").value,
+  });
+  // Fetch only the rows on screen; summary cards use server-wide totals.
   const collected = [];
-  let total = 0;
-  // Load the complete result set so summary cards can represent every file.
-  // The table still uses documentLimit to control how many matching rows render.
-  for (let offset = 0; ; offset += 100) {
-    const data = await api(`/documents?offset=${offset}&limit=100`);
+  let data;
+  do {
+    params.set("offset", collected.length);
+    params.set("limit", Math.min(100, documentLimit - collected.length));
+    data = await api(`/documents?${params}`);
     collected.push(...data.items);
-    total = data.total;
-    processedDocumentCount = data.processed;
-    if (collected.length >= total || !data.items.length) break;
-  }
+  } while (
+    data.items.length &&
+    collected.length < Math.min(documentLimit, data.matching)
+  );
+  // A slower, older request (e.g. a poll racing a search) must not win.
+  if (sequence !== refreshSequence) return;
   documents = collected;
-  $("load-more").hidden = total <= documentLimit;
+  stats = data;
+  $("load-more").hidden = data.matching <= documentLimit;
   renderResults();
 }
 async function poll() {
   try {
     if (document.visibilityState === "visible") {
       await refresh();
-      pollDelay = documents.some((d) =>
-        ["running", "queued"].includes(d.status),
-      )
-        ? 2500
-        : 15000;
+      pollDelay = stats.active_ids.length ? 2500 : 15000;
     }
   } catch {
     pollDelay = Math.min(pollDelay * 2, 60000);
   }
   pollTimer = setTimeout(poll, pollDelay);
 }
-$("search").oninput = renderResults;
-$("filter").onchange = renderResults;
+let searchTimer;
+$("search").oninput = () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => refresh().catch(showError), 250);
+};
+$("filter").onchange = () => refresh().catch(showError);
 $("load-more").onclick = () => {
   documentLimit += 20;
   refresh().catch(showError);

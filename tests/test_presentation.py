@@ -97,3 +97,27 @@ def test_page_count_and_explicit_rule_metadata():
     assert parsed.issues[0].clause == "7.2" and parsed.issues[0].test_number == "20"
     assert parsed.issues[0].description == "Description"
     assert parse_verapdf_xml('<validationReport isCompliant="true"/>', 1).page_count is None
+
+
+def test_list_filters_server_side_and_reports_workspace_totals(client, store, settings, uploaded):
+    doc_id = uploaded["id"]
+    client.post(f"/api/v1/documents/{doc_id}/submit")
+    pending = client.post("/api/v1/documents", json={"name": "Other.pdf", "size": 9}).json()
+    queued = client.get("/api/v1/documents").json()
+    assert queued["active_ids"] == [doc_id]
+
+    def runner(path, profile, s):
+        result, xml = successful_runner(path, profile, s)
+        return result | {"page_count": 3}, xml
+
+    process_document(store, settings, "local-development", doc_id, runner)
+    page = client.get("/api/v1/documents?limit=1").json()
+    assert page["total"] == page["matching"] == 2 and len(page["items"]) == 1
+    assert page["processed"] == 1 and page["pages"] == 3
+    assert page["ua_passed"] == page["wcag_passed"] == 1 and page["active_ids"] == []
+    search = client.get("/api/v1/documents?q=%20other").json()
+    assert [d["id"] for d in search["items"]] == [pending["id"]]
+    assert search["matching"] == 1 and search["total"] == 2 and search["processed"] == 1
+    assert [d["id"] for d in client.get("/api/v1/documents?status=passed").json()["items"]] == [doc_id]
+    assert client.get("/api/v1/documents?status=active").json()["matching"] == 1
+    assert client.get("/api/v1/documents?status=deleted").status_code == 422

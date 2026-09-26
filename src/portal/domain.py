@@ -62,6 +62,34 @@ def public(row):
     }
 
 
+ACTIVE = {"uploading", "queued", "running"}
+TERMINAL = {"passed", "failed", "error"}
+
+
+def matches(row, query, status):
+    if query and query not in row["name"].casefold():
+        return False
+    if status == "active":
+        return row["status"] in ACTIVE
+    return status == "all" or row["status"] == status
+
+
+def document_stats(rows):
+    """Workspace totals, so clients never page through every document for summary cards."""
+    passed = {"pdfua-1": 0, "wcag-2.2": 0}
+    for row in rows:
+        for summary in json.loads(row.get("profile_summaries", "[]")):
+            if summary.get("status") == "passed" and summary.get("profile") in passed:
+                passed[summary["profile"]] += 1
+    return {
+        "processed": sum(row["status"] in TERMINAL for row in rows),
+        "ua_passed": passed["pdfua-1"],
+        "wcag_passed": passed["wcag-2.2"],
+        "pages": sum(row.get("page_count") or 0 for row in rows),
+        "active_ids": [row["id"] for row in rows if row["status"] in {"queued", "running"}],
+    }
+
+
 def prefix(doc):
     return f"{doc['PartitionKey']}/{doc['id']}/"
 
