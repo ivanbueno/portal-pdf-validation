@@ -1,4 +1,9 @@
-import { AccessDenied, LOGIN_URL, LOGOUT_URL } from "./common.js";
+import {
+  LeavingWorkspace,
+  LOGIN_PAGE,
+  LOGIN_URL,
+  LOGOUT_URL,
+} from "./common.js";
 export const config = await fetch("/api/config").then((r) => {
   if (!r.ok) throw new Error("Configuration unavailable");
   return r.json();
@@ -7,11 +12,12 @@ const session = config.local
   ? { name: "Local workspace", kind: "user" }
   : await fetch("/api/session", { credentials: "same-origin" }).then(
       async (response) => {
-        if (response.status === 401) return null;
-        if (response.status === 403)
-          throw new AccessDenied(
-            "Your account is not authorized for this workspace.",
-          );
+        // The server already sends these visitors to sign in; this covers a session
+        // that ended after the page loaded. The sign-in page explains which case it is.
+        if (response.status === 401 || response.status === 403) {
+          location.replace(LOGIN_PAGE);
+          throw new LeavingWorkspace();
+        }
         if (!response.ok)
           throw new Error(`Session unavailable (${response.status})`);
         return response.json();
@@ -21,7 +27,6 @@ export const account = () => session;
 export const signIn = () => location.assign(LOGIN_URL);
 export const signOut = () => location.assign(LOGOUT_URL);
 export async function api(path, options = {}) {
-  if (!account()) throw new Error("Sign in to access your workspace.");
   const headers = {
     ...(options.body ? { "Content-Type": "application/json" } : {}),
     "X-Requested-With": "PDFValidationPortal",

@@ -1,5 +1,5 @@
 // File staging, drag and drop, and the reserve → upload → submit workflow.
-import { api, account, config, upload } from "./api.js";
+import { api, config, upload } from "./api.js";
 import { beginBatch, showBatch, trackDocument } from "./results.js";
 import { $, action, limit, node, notify, showError, size } from "./ui.js";
 
@@ -36,8 +36,7 @@ function renderProfileOptions() {
 
 function renderStaging() {
   $("staging").hidden = !staged.length;
-  $("submit").disabled =
-    busy || !staged.length || !account() || !selectedProfiles().length;
+  $("submit").disabled = busy || !staged.length || !selectedProfiles().length;
   $("clear").disabled = busy;
   $("files").disabled = busy;
   $("staged-total").textContent =

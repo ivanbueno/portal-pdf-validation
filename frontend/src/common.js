@@ -1,10 +1,12 @@
-// Dependency-free helpers shared by entry.js and the app. Unlike api.js, this
-// module does no network work on import, so the startup error path can use it.
+// Dependency-free helpers shared by entry.js, the app, and the sign-in page. Unlike
+// api.js, this module does no network work on import, so the startup error path can use it.
+export const LOGIN_PAGE = "/login";
 export const LOGIN_URL = "/.auth/login/aad?post_login_redirect_uri=%2F";
-export const LOGOUT_URL = "/.auth/logout?post_logout_redirect_uri=%2F";
+export const LOGOUT_URL =
+  "/.auth/logout?post_logout_redirect_uri=%2Flogin%3Fsigned-out";
 
-// Startup failure for a signed-in account without access to the workspace.
-export class AccessDenied extends Error {}
+// Startup stopped because the browser is leaving for the sign-in page.
+export class LeavingWorkspace extends Error {}
 
 // Fades the notice out after `delay` ms; returns a function that cancels it.
 function scheduleNoticeFade(notice, delay) {

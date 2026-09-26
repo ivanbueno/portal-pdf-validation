@@ -6,7 +6,7 @@ This guide provisions a new PDF Validation Portal in Azure Container Apps. Azure
 
 - One single-tenant Entra application registration for the portal and API.
 - A resource group containing Container Apps, Container Registry, Storage, a user-assigned managed identity, Log Analytics, and alert rules.
-- An externally reachable HTTPS Container App. Easy Auth protects the API and sign-in endpoints; only the shell, static assets, configuration, and health checks are public.
+- An externally reachable HTTPS Container App. Easy Auth protects the API and sign-in endpoints; only the sign-in page, static assets, configuration, and health checks are public. The app serves the workspace page only to signed-in, authorized users.
 - A worker Container Apps job and a scheduled maintenance job.
 
 Choose a dedicated, otherwise unused resource group and a lowercase alphanumeric resource prefix 3–10 characters long. The examples use `pdf-validation-prod`, `westus2`, and `pdfval`; change these to match your environment. The templates do not configure custom domains, private networking, or API Management.
@@ -132,7 +132,7 @@ The `infra/main.bicep` deployment creates the API app, enables HTTPS ingress, co
    curl --fail --retry 12 --retry-delay 10 --retry-all-errors "$ORIGIN/health/ready"
    ```
 
-   Sign-in begins at `https://<CONTAINER_APP_HOSTNAME>/.auth/login/aad`; sign-out uses `/.auth/logout`.
+   Visitors without a session land on `https://<CONTAINER_APP_HOSTNAME>/login`, whose button starts sign-in at `/.auth/login/aad`; sign-out uses `/.auth/logout` and returns to `/login`.
 
 Keep `portalOrigin="$ORIGIN"` when redeploying both `infra/foundation.bicep` and `infra/main.bicep`, so the Blob upload CORS rule remains aligned with the app hostname. If the app is recreated and its hostname changes, update the Web redirect URI and redeploy foundation with the new origin.
 
@@ -154,7 +154,7 @@ The included **Deploy Azure** workflow is a manual release workflow. It builds a
 
 ## Runtime, access boundary, and operations
 
-- Easy Auth is the sole production authentication boundary. It protects `/api/session`, `/api/v1/*`, `/docs`, and `/openapi.json`. The shell `/`, `/assets/*`, `/api/config`, `/health/live`, and `/health/ready` are public and contain no document data.
+- Easy Auth is the sole production authentication boundary. It protects `/api/session`, `/api/v1/*`, `/docs`, and `/openapi.json`. `/`, `/login`, `/assets/*`, `/api/config`, `/health/live`, and `/health/ready` pass through without sign-in and contain no document data. FastAPI serves the workspace page at `/` only for a valid, authorized Easy Auth principal and redirects everyone else to the `/login` sign-in page; `/login` redirects authorized users back to `/`.
 - Azure validates Entra tokens, strips caller-supplied `X-MS-CLIENT-PRINCIPAL`, and injects validated claims. FastAPI trusts this header only with `PDF_AUTH_MODE=easyauth`. Never expose the Python port through another proxy, ingress port, or direct production container mapping.
 - Cookie-authenticated mutations require `X-Requested-With: PDFValidationPortal`; cross-site browser mutations are rejected. Bearer API calls do not need this header. The app does not accept unvalidated bearer tokens as a fallback.
 - The API scales from 1–3 replicas at 0.5 vCPU/1 GiB. Worker executions scale to four, each 2 vCPU/4 GiB with a 900-second timeout. Maintenance runs every two minutes. Storage and registry access use managed identity; storage keys and public blob access are disabled.
@@ -164,7 +164,7 @@ The included **Deploy Azure** workflow is a manual release workflow. It builds a
 ## Azure smoke checks
 
 1. Confirm Easy Auth is enabled with HTTPS required, the correct tenant issuer and audiences, and the configured callback. Anonymous `/api/session` and `/api/v1/documents` requests must return 401. Forged `X-MS-CLIENT-PRINCIPAL` headers must not grant access.
-2. Sign in through `/.auth/login/aad`. Verify an assigned staff user receives the `Validation.User` role, the session renews and expires as expected, sign-out works, and an unassigned user cannot access documents.
+2. In a private window, open `/` and confirm it redirects to `/login` without showing the workspace. Sign in from that page. Verify an assigned staff user lands in the workspace with the `Validation.User` role (this confirms Easy Auth forwards the principal on the public `/` and `/login` paths; if it does not, signed-in users are sent back to `/login`). Verify the session renews and expires as expected, sign-out returns to the signed-out page, and an unassigned user sees the access-needed page and cannot access documents.
 3. Test machine tokens with `Validation.Run`; also verify rejection of foreign-tenant, wrong-audience, expired, and missing-role tokens. Test any delegated integrations with `Validation.Access`.
 4. Upload pass/fail fixtures through the portal and Python client. Check per-profile results, report downloads, cross-principal 404 behavior, and cookie mutation CSRF protection.
 5. Verify worker recovery, expiration and cleanup, SAS upload CORS, managed identity permissions, autoscaling, alert delivery, and representative multi-file load.

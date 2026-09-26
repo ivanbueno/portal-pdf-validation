@@ -137,3 +137,29 @@ def test_production_requires_explicit_trust_boundary():
     with pytest.raises(ValueError, match="Easy Auth"):
         Settings(**valid)
     assert Settings(**valid, auth_mode="easyauth").auth_mode == "easyauth"
+
+
+@pytest.fixture
+def pages(settings, tmp_path):
+    (tmp_path / "index.html").write_text("workspace")
+    (tmp_path / "login.html").write_text("sign in")
+    settings.dist = tmp_path
+
+
+def test_workspace_shell_only_for_authorized_users(easy, pages):
+    unassigned = principal([("tid", "tenant"), ("oid", "person")])
+    for headers in ({}, {"x-ms-client-principal": "not-base64"}, {"x-ms-client-principal": unassigned}):
+        response = easy.get("/", headers=headers, follow_redirects=False)
+        assert (response.status_code, response.headers["location"]) == (302, "/login")
+        # Signed-out and unassigned visitors both get the sign-in page, which explains which.
+        assert easy.get("/login", headers=headers).text == "sign in"
+    staff = {"x-ms-client-principal": principal()}
+    assert easy.get("/", headers=staff).text == "workspace"
+    response = easy.get("/login", headers=staff, follow_redirects=False)
+    assert (response.status_code, response.headers["location"]) == (302, "/")
+    assert response.headers["cache-control"] == "no-store"
+
+
+def test_local_identity_gets_workspace_and_sign_in_preview(client, pages):
+    assert client.get("/", follow_redirects=False).text == "workspace"
+    assert client.get("/login", follow_redirects=False).text == "sign in"

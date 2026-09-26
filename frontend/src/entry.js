@@ -1,18 +1,10 @@
 import "./style.css";
-import { AccessDenied, LOGOUT_URL, notify } from "./common.js";
+import { LeavingWorkspace, notify } from "./common.js";
 import("./app.js").catch((error) => {
-  if (!(error instanceof AccessDenied)) {
-    notify(
-      "The workspace could not start. Check your connection and reload this page.",
-      true,
-    );
-    return;
-  }
-  const logout = document.createElement("a");
-  logout.href = LOGOUT_URL;
-  logout.textContent = "Sign out";
+  // The sign-in page is loading and explains what the visitor needs.
+  if (error instanceof LeavingWorkspace) return;
   notify(
-    "Your account needs access to this workspace. Ask your administrator to assign the Validation.User role. ",
+    "The workspace could not start. Check your connection and reload this page.",
     true,
-  ).append(logout);
+  );
 });

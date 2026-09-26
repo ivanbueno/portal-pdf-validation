@@ -7,8 +7,8 @@
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
     "test": "playwright test",
-    "format": "prettier --write src tests *.js index.html",
-    "format:check": "prettier --check src tests *.js index.html"
+    "format": "prettier --write src tests *.js index.html login.html",
+    "format:check": "prettier --check src tests *.js index.html login.html"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",

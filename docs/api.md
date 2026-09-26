@@ -6,7 +6,7 @@ The browser uses Easy Auth's session cookie and `/.auth/login/aad` / `/.auth/log
 
 FastAPI authorizes Azure-injected claims and scopes every document to tenant + user/application object ID. Do not send `X-MS-CLIENT-PRINCIPAL` yourself: Azure creates it and strips client-provided values. Direct access bypassing the Easy Auth boundary is unsupported in production. The explicit loopback development identity is only for local use.
 
-`/health/*`, `/api/config`, and static assets are public and contain no document data. `/api/session`, API routes, `/docs`, and `/openapi.json` are protected in Azure. Swagger's Authorize control accepts a bearer access token for API mutations.
+`/health/*`, `/api/config`, the `/login` sign-in page, and static assets are public and contain no document data. The workspace page `/` redirects to `/login` unless the browser is signed in with the required role. `/api/session`, API routes, `/docs`, and `/openapi.json` are protected in Azure. Swagger's Authorize control accepts a bearer access token for API mutations.
 
 ## Upload → submit → poll → download
 

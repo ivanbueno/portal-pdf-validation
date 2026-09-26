@@ -247,7 +247,8 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
     }),
   );
   await page.goto("/");
-  await expect(page.locator("#signin")).toBeVisible();
+  await expect(page).toHaveURL(/\/login$/);
+  await expect(page.locator("#identity")).toHaveCount(0);
   await page.locator("#signin").click();
   await expect(page).toHaveURL(
     /\/\.auth\/login\/aad\?post_login_redirect_uri=%2F$/,
@@ -257,7 +258,7 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
   await expect(page.locator("#identity")).toHaveText("Staff Member");
   await page.locator("#signout").click();
   await expect(page).toHaveURL(
-    /\/\.auth\/logout\?post_logout_redirect_uri=%2F$/,
+    /\/\.auth\/logout\?post_logout_redirect_uri=%2Flogin%3Fsigned-out$/,
   );
   const initialPoll = page.waitForResponse((response) =>
     response.url().includes("/api/v1/documents?"),
@@ -281,10 +282,60 @@ test("unassigned Easy Auth user gets an actionable denial", async ({
     route.fulfill({ status: 403, json: { detail: "Missing role" } }),
   );
   await page.goto("/");
-  await expect(page.locator("#notice")).toContainText("Validation.User role");
+  await expect(page).toHaveURL(/\/login$/);
   await expect(
-    page.locator("#notice").getByRole("link", { name: "Sign out" }),
-  ).toHaveAttribute("href", "/.auth/logout?post_logout_redirect_uri=%2F");
+    page.getByRole("heading", { name: "Your account doesn't have access" }),
+  ).toBeVisible();
+  await expect(page.locator("#denied-screen")).toContainText(
+    "Validation.User role",
+  );
+  await expect(page.locator("#signin-screen")).toBeHidden();
+  await expect(
+    page.locator("#denied-screen").getByRole("link", { name: "Sign out" }),
+  ).toHaveAttribute(
+    "href",
+    "/.auth/logout?post_logout_redirect_uri=%2Flogin%3Fsigned-out",
+  );
+});
+
+test("sign-in page shows no workspace and is accessible in light and dark", async ({
+  page,
+}) => {
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ status: 401, json: { detail: "Sign in required" } }),
+  );
+  await page.goto("/login");
+  await expect(
+    page.getByRole("heading", { name: "Sign in to your workspace" }),
+  ).toBeVisible();
+  await expect(page.locator("#workspace, #files, #results")).toHaveCount(0);
+  const light = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(light.violations).toEqual([]);
+  await page.screenshot({ path: "test-results/login-desktop.png" });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/login?signed-out");
+  await expect(
+    page.getByRole("heading", { name: "You're signed out" }),
+  ).toBeVisible();
+  await expect(page.locator("#signin-screen")).toBeHidden();
+  while ((await page.locator("#theme").textContent()) !== "Theme: dark")
+    await page.locator("#theme").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await page.evaluate(() => (document.documentElement.style.fontSize = "32px"));
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
+  await page.evaluate(() => (document.documentElement.style.fontSize = "16px"));
+  const dark = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(dark.violations).toEqual([]);
+  await page.screenshot({ path: "test-results/login-mobile-dark.png" });
+  expect(errors).toEqual([]);
 });
 
 test("an unavailable session service is not reported as missing access", async ({

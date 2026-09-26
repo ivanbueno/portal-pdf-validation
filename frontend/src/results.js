@@ -1,5 +1,5 @@
 // The document table, summary cards, batch progress, and polling.
-import { api, account, config, download } from "./api.js";
+import { api, config, download } from "./api.js";
 import { loadDetail } from "./detail.js";
 import {
   $,
@@ -248,7 +248,6 @@ function renderResults() {
 }
 
 export async function refresh() {
-  if (!account()) return;
   const sequence = ++refreshSequence;
   const params = new URLSearchParams({
     q: $("search").value.trim(),
