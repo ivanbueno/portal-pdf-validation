@@ -6,7 +6,10 @@ from portal.storage import Storage
 
 
 def test_upload_grants_reuse_the_user_delegation_key():
-    settings = Settings(_env_file=None, environment="test", storage_account="account")
+    # Pinned empty: the compose runtime exports an emulator connection string, which signs with the account key.
+    settings = Settings(
+        _env_file=None, environment="test", storage_account="account", storage_connection_string=""
+    )
     store = Storage(settings)
     fetched = []
 
