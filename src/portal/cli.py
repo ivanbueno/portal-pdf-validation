@@ -4,7 +4,7 @@ import argparse
 import logging
 import time
 from .config import Settings
-from .events import log_event
+from .events import configure_logging, log_event
 from .storage import Storage
 
 log = logging.getLogger("portal.cli")
@@ -16,8 +16,7 @@ def run(step, interval):
     A single run lets failures propagate, so the Azure job execution reports them. The loop
     logs a failed step and keeps going: one storage hiccup must not stop local processing.
     """
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logging.getLogger("azure").setLevel(logging.WARNING)
+    configure_logging()
     parser = argparse.ArgumentParser()
     parser.add_argument("--loop", action="store_true")
     args = parser.parse_args()

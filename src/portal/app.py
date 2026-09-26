@@ -22,7 +22,6 @@ from .config import (
     Status,
 )
 from .domain import (
-    FileInput,
     reserve,
     submit,
     get_owned,
@@ -34,22 +33,17 @@ from .domain import (
     public,
     tombstone,
 )
-from .events import log_event
+from .events import configure_logging, log_event
 from .storage import Storage, Conflict
 from .services.grouping import group_issues, issue_view
 from .middleware import MetadataBodyLimit
-from .models.api import DocumentView, DocumentPage, DocumentDetail, StatusFilter, UploadGrant
+from .models.api import DocumentView, DocumentPage, DocumentDetail, FileInput, StatusFilter, UploadGrant
 
 log = logging.getLogger("portal")
-log.setLevel(logging.INFO)
-if not log.handlers:
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(message)s"))
-    log.addHandler(handler)
-log.propagate = False
 
 
 def create_app(settings=None, storage=None):
+    configure_logging()
     settings = settings or Settings()
     storage = storage or Storage(settings)
 

@@ -3,7 +3,7 @@ import sys
 import time
 import pytest
 from azure.core.exceptions import ServiceRequestError
-from portal import cli
+from portal import cli, worker
 from portal.auth import owner
 from portal.config import MAX_FILE
 from portal.domain import tombstone
@@ -156,17 +156,31 @@ def test_worker_lease_and_crash_recovery(store, settings, submitted):
     assert store.get(OWNER, submitted)["attempts"] == 2
 
 
-def test_delete_race_does_not_publish(client, store, settings, submitted):
+def test_delete_race_does_not_publish(client, store, settings, submitted, monkeypatch):
+    events = []
+    monkeypatch.setattr(worker, "log_event", lambda logger, event, *args, **fields: events.append(event))
+
     def runner(path, profile, s):
         if profile == "wcag-2.2":
             assert client.delete(f"{BASE}/documents/{submitted}").status_code == 204
         return successful_runner(path, profile, s)
 
     process_document(store, settings, OWNER, submitted, runner)
+    # The final save lost to the deletion, so the attempt never reports finishing.
+    assert events == ["validation_started"]
     assert client.get(f"{BASE}/documents/{submitted}").status_code == 404
     assert store.get(OWNER, submitted)["status"] == "deleted"
     sweep(store, settings)
     assert not store.objects
+
+
+def test_publish_needs_no_ownership_read(store, settings, submitted, monkeypatch):
+    real, reads = store.get, []
+    monkeypatch.setattr(store, "get", lambda *key: reads.append(key) or real(*key))
+    assert process_document(store, settings, OWNER, submitted, successful_runner)
+    # The initial read and one ownership check per profile; the ETag-fenced save needs none.
+    assert len(reads) == 1 + len(UPLOAD["profiles"])
+    assert real(OWNER, submitted)["status"] == "passed"
 
 
 def test_owner_isolation(client, uploaded):

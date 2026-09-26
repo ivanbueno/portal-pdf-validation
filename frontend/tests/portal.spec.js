@@ -77,6 +77,13 @@ test("real multi-file uploads, reports, keyboard dialog, and deletion", async ({
   await expect(page.locator(".detail-row:not([hidden])")).toContainText(
     "Accessibility issues",
   );
+  await expect(page.locator("#filter option")).toHaveText([
+    "All outcomes",
+    "In progress",
+    "Passed checks",
+    "Failed checks",
+    "Processing error",
+  ]);
   await page.locator("#search").fill("ua-pass.pdf");
   await expect(page.locator("#results-body")).not.toContainText("ua-fail.pdf");
   await page.locator("#search").clear();
@@ -278,6 +285,23 @@ test("unassigned Easy Auth user gets an actionable denial", async ({
   await expect(
     page.locator("#notice").getByRole("link", { name: "Sign out" }),
   ).toHaveAttribute("href", "/.auth/logout?post_logout_redirect_uri=%2F");
+});
+
+test("an unavailable session service is not reported as missing access", async ({
+  page,
+}) => {
+  await page.route("**/api/config", (route) =>
+    route.fulfill({ json: { local: false, authMode: "easyauth" } }),
+  );
+  await page.route("**/api/session", (route) =>
+    route.fulfill({ status: 503, json: { detail: "Storage unavailable" } }),
+  );
+  await page.goto("/");
+  await expect(page.locator("#notice")).toContainText(
+    "The workspace could not start",
+  );
+  await expect(page.locator("#notice")).not.toContainText("Validation.User");
+  await expect(page.locator("#notice").getByRole("link")).toHaveCount(0);
 });
 
 test("one invalid upload does not block other documents or duplicate retries", async ({

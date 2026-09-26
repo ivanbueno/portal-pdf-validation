@@ -8,15 +8,15 @@ import {
   action,
   node,
   notify,
+  outcomeLabel,
   profileIds,
   profileLabel,
   showError,
   size,
-  statusLabels,
+  statusLabel,
 } from "./ui.js";
 
 const PAGE_SIZE = 20;
-const PROFILE_STATE = { passed: "Pass", failed: "Fail", error: "Error" };
 
 let documents = [],
   stats = { total: 0, active_ids: [], passed_by_profile: {} },
@@ -132,11 +132,11 @@ function renderProfileOutcomes(d) {
     const line = node("div", undefined, `profile-line ${resultStatus}`);
     line.setAttribute(
       "aria-label",
-      `${profileLabel(profile)}: ${statusLabels[resultStatus] || "Pending"}, ${issueCount ?? "unknown"} errors`,
+      `${profileLabel(profile)}: ${statusLabel(resultStatus)}, ${issueCount ?? "unknown"} errors`,
     );
     line.append(
       node("span", profileLabel(profile), "profile-name"),
-      node("span", PROFILE_STATE[resultStatus] || "Pending", "profile-state"),
+      node("span", outcomeLabel(resultStatus), "profile-state"),
     );
     if (resultStatus !== "passed") {
       const running = d.status === "running";
@@ -331,6 +331,12 @@ const closeMenus = (handle) =>
   document.querySelectorAll(".action-dropdown[open]").forEach(handle);
 
 export function initResults() {
+  // The server accepts `all`, `active`, or one finished status.
+  $("filter").replaceChildren(
+    new Option("All outcomes", "all"),
+    new Option("In progress", "active"),
+    ...TERMINAL.map((status) => new Option(statusLabel(status), status)),
+  );
   renderProfileStats();
   $("search").oninput = () => {
     clearTimeout(searchTimer);

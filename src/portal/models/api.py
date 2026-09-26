@@ -1,9 +1,9 @@
-"""Public response contracts; Azure metadata and storage keys never leave the service."""
+"""Public request and response contracts; Azure metadata and storage keys never leave the service."""
 
 from typing import Literal
-from pydantic import BaseModel, Field
-from ..config import ACTIVE, DEFAULT_PROFILES, PROFILES, PROFILE_ALIASES, TERMINAL
-from .responses import Issue, ValidationSummary
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from ..config import ACTIVE, DEFAULT_PROFILES, MAX_FILE, PROFILES, PROFILE_ALIASES, TERMINAL
+from .report import Issue, ValidationSummary
 
 
 def _literal(values):
@@ -16,6 +16,30 @@ ProfileAlias = _literal(PROFILE_ALIASES)
 DocumentStatus = _literal(ACTIVE + TERMINAL)
 # `active` selects every ACTIVE status.
 StatusFilter = _literal(("all", "active", *TERMINAL))
+
+
+class FileInput(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=240)
+    size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
+    profiles: list[str] = Field(default_factory=lambda: list(DEFAULT_PROFILES), min_length=1)
+
+    @field_validator("profiles")
+    @classmethod
+    def validation_profiles(cls, value):
+        value = [PROFILE_ALIASES.get(profile, profile) for profile in value]
+        if len(value) != len(set(value)) or not set(value) <= set(PROFILES):
+            raise ValueError(f"Choose one or more of: {', '.join(PROFILE_ALIASES)}")
+        return value
+
+    @field_validator("name")
+    @classmethod
+    def filename(cls, value):
+        if any(ord(c) < 32 for c in value) or "/" in value or "\\" in value:
+            raise ValueError("Use a plain filename without path separators")
+        if not value.lower().endswith(".pdf"):
+            raise ValueError("Only .pdf files are supported")
+        return value
 
 
 class ProfileResult(BaseModel):

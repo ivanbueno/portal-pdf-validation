@@ -1,7 +1,7 @@
 // The expanded validation report beneath a document row.
 import { api, config } from "./api.js";
 import { loadOccurrencePreviews } from "./previews-ui.js";
-import { action, node, profileLabel, statusLabels } from "./ui.js";
+import { action, node, outcomeLabel, profileLabel, statusLabel } from "./ui.js";
 
 const ISSUE_PAGE_SIZE = 100;
 // Occurrences shown individually; the rest are summarized by page.
@@ -16,9 +16,9 @@ const plural = (count, singular, pluralForm = `${singular}s`) =>
   count === 1 ? singular : pluralForm;
 
 function outcome(result, status) {
-  if (!result) return statusLabels[status] || "Pending";
-  if (result.status === "error") return "Processing error";
-  return `${result.passed ? "Pass" : "Fail"} · ${result.summary?.errors ?? "Unknown"} ${plural(result.summary?.errors, "error")}`;
+  if (!result) return statusLabel(status);
+  if (result.status === "error") return statusLabel("error");
+  return `${outcomeLabel(result.status)} · ${result.summary?.errors ?? "Unknown"} ${plural(result.summary?.errors, "error")}`;
 }
 
 function renderSummary(d) {

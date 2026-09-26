@@ -1,4 +1,4 @@
-import { LOGIN_URL, LOGOUT_URL } from "./common.js";
+import { AccessDenied, LOGIN_URL, LOGOUT_URL } from "./common.js";
 export const config = await fetch("/api/config").then((r) => {
   if (!r.ok) throw new Error("Configuration unavailable");
   return r.json();
@@ -8,8 +8,12 @@ const session = config.local
   : await fetch("/api/session", { credentials: "same-origin" }).then(
       async (response) => {
         if (response.status === 401) return null;
+        if (response.status === 403)
+          throw new AccessDenied(
+            "Your account is not authorized for this workspace.",
+          );
         if (!response.ok)
-          throw new Error("Your account is not authorized for this workspace.");
+          throw new Error(`Session unavailable (${response.status})`);
         return response.json();
       },
     );

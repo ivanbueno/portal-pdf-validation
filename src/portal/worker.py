@@ -22,6 +22,7 @@ class Superseded(Exception):
 
 
 def active(store, doc):
+    """Whether this attempt still owns the document; checked before each long profile run."""
     current = store.get(doc["PartitionKey"], doc["id"])
     return (
         current
@@ -137,21 +138,21 @@ def publish(store, doc, results, raw_reports):
     store.put(names["report"], json.dumps(report).encode())
     # The portal pages through this small view instead of downloading the full report.
     store.put(names["issues"], json.dumps(issue_view(report["issue_groups"])).encode())
-    if not active(store, doc):
-        store.purge(run_prefix(doc))
-        return
-    # Save against the claim's ETag: deletion or a newer attempt must win this race.
+    # Save against the claim's ETag: deletion, a lease sweep, or a newer attempt changed the row
+    # and must win this race. No read beforehand: the conditional write is the ownership check.
     try:
         store.save(doc | fields | names | {"raw_reports": json.dumps(raw_reports)})
     except Conflict:
         store.purge(run_prefix(doc))
+        raise Superseded()
     log_event(log, "validation_finished", document_id=doc["id"], status=fields["status"])
 
 
 def release(store, doc):
-    """After an infrastructure failure, requeue the document, or fail it after the last attempt."""
-    if not active(store, doc):
-        return
+    """After an infrastructure failure, requeue the document, or fail it after the last attempt.
+
+    Saved against the claim's ETag, so a document deleted or claimed again meanwhile is left alone.
+    """
     retry = doc["attempts"] < MAX_ATTEMPTS
     try:
         store.save(

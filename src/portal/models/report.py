@@ -1,3 +1,5 @@
+"""Validation report models: parsed from veraPDF output, stored, and returned by the API."""
+
 from __future__ import annotations
 
 from typing import Literal

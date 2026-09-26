@@ -2,43 +2,9 @@ import json
 import hashlib
 import time
 from fastapi import HTTPException
-from pydantic import BaseModel, ConfigDict, Field, field_validator
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
-from .config import (
-    ACTIVE,
-    DEFAULT_PROFILES,
-    MAX_FILE,
-    PROCESSING,
-    PROFILES,
-    PROFILE_ALIASES,
-    TERMINAL,
-    Status,
-)
+from .config import ACTIVE, PROCESSING, PROFILES, TERMINAL, Status
 from .storage import Conflict
-
-
-class FileInput(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    name: str = Field(min_length=1, max_length=240)
-    size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
-    profiles: list[str] = Field(default_factory=lambda: list(DEFAULT_PROFILES), min_length=1)
-
-    @field_validator("profiles")
-    @classmethod
-    def validation_profiles(cls, value):
-        value = [PROFILE_ALIASES.get(profile, profile) for profile in value]
-        if len(value) != len(set(value)) or not set(value) <= set(PROFILES):
-            raise ValueError(f"Choose one or more of: {', '.join(PROFILE_ALIASES)}")
-        return value
-
-    @field_validator("name")
-    @classmethod
-    def filename(cls, value):
-        if any(ord(c) < 32 for c in value) or "/" in value or "\\" in value:
-            raise ValueError("Use a plain filename without path separators")
-        if not value.lower().endswith(".pdf"):
-            raise ValueError("Only .pdf files are supported")
-        return value
 
 
 PUBLIC = {

@@ -3,8 +3,11 @@
 export const LOGIN_URL = "/.auth/login/aad?post_login_redirect_uri=%2F";
 export const LOGOUT_URL = "/.auth/logout?post_logout_redirect_uri=%2F";
 
+// Startup failure for a signed-in account without access to the workspace.
+export class AccessDenied extends Error {}
+
 // Fades the notice out after `delay` ms; returns a function that cancels it.
-export function scheduleNoticeFade(notice, delay) {
+function scheduleNoticeFade(notice, delay) {
   let fade;
   const timer = setTimeout(() => {
     notice.classList.add("notice-leaving");
@@ -16,4 +19,18 @@ export function scheduleNoticeFade(notice, delay) {
     clearTimeout(timer);
     clearTimeout(fade);
   };
+}
+
+let cancelNoticeFade;
+// Shows `text` in the page notice, replacing any current one; returns the notice.
+export function notify(text, error = false) {
+  const notice = document.getElementById("notice");
+  cancelNoticeFade?.();
+  notice.classList.remove("notice-leaving");
+  notice.hidden = !text;
+  notice.textContent = text;
+  notice.classList.toggle("error", error);
+  notice.setAttribute("role", error ? "alert" : "status");
+  if (text) cancelNoticeFade = scheduleNoticeFade(notice, error ? 8000 : 5000);
+  return notice;
 }

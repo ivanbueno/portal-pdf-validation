@@ -26,14 +26,15 @@ class MemoryStorage:
         if key in self.entities:
             raise Conflict()
         self.entities[key] = copy.deepcopy(entity) | {"_etag": uuid.uuid4().hex}
-        return self.get(*key)
+        # Like Table Storage, a write answers with its ETag instead of a re-read.
+        return copy.deepcopy(self.entities[key])
 
     def save(self, entity):
         key = (entity["PartitionKey"], entity["RowKey"])
         if key not in self.entities or self.entities[key]["_etag"] != entity["_etag"]:
             raise Conflict()
         self.entities[key] = copy.deepcopy(entity) | {"_etag": uuid.uuid4().hex}
-        return self.get(*key)
+        return copy.deepcopy(self.entities[key])
 
     def remove(self, entity):
         key = (entity["PartitionKey"], entity["RowKey"])

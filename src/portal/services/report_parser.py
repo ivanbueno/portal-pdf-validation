@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 from defusedxml import ElementTree as ET
 
-from ..models.responses import Issue, ValidationSummary
+from ..models.report import Issue, ValidationSummary
 
 _PAGE_PATTERN = re.compile(r"\bpage\s*(\d+)\b", re.IGNORECASE)
 _VERAPDF_PAGE_PATTERN = re.compile(r"(?:^|/)pages\[(\d+)(?:-\d+)?\]")
