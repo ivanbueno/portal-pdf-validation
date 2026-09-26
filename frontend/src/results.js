@@ -87,16 +87,18 @@ const pageCount = (count) =>
     ? "Page count unavailable"
     : `${count} ${count === 1 ? "page" : "pages"}`;
 
+// A details toggle's glyph and state, from whether the document is expanded.
+function renderToggle(toggle, id) {
+  toggle.textContent = expanded.has(id) ? "⌄" : "›";
+  toggle.setAttribute("aria-expanded", String(expanded.has(id)));
+}
+
 function renderFileCell(d) {
-  const toggle = action(
-    expanded.has(d.id) ? "⌄" : "›",
-    () => toggleDetail(d),
-    "expand-toggle",
-  );
+  const toggle = action(undefined, () => toggleDetail(d), "expand-toggle");
   toggle.id = `toggle-${d.id}`;
   toggle.setAttribute("aria-label", `Validation details for ${d.name}`);
-  toggle.setAttribute("aria-expanded", String(expanded.has(d.id)));
   toggle.setAttribute("aria-controls", `details-${d.id}`);
+  renderToggle(toggle, d.id);
   const link = node(d.pdf_available ? "a" : "span", d.name, "pdf-link");
   if (d.pdf_available) {
     link.href = `/api/v1/documents/${d.id}/pdf`;
@@ -284,39 +286,26 @@ export async function poll() {
   pollTimer = setTimeout(poll, pollDelay);
 }
 
+// Updates only the toggled row's button and detail row: rebuilding the table
+// would move focus and let scroll anchoring shift the page.
 async function toggleDetail(doc, forceOpen = false) {
-  const anchorTop = document
-    .getElementById(`row-${doc.id}`)
-    ?.getBoundingClientRect().top;
   const closing = expanded.has(doc.id) && !forceOpen;
-  const row = detailRows.get(doc.id);
-  if (closing) {
-    row?.classList.add("detail-closing");
-    expanded.delete(doc.id);
-  } else expanded.add(doc.id);
-  renderedSignature = "";
-  renderResults();
-  // Replacing the tbody can make the browser's scroll anchoring choose a
-  // different table position. Keep the toggled row at its current viewport Y.
-  if (anchorTop != null) {
-    requestAnimationFrame(() => {
-      const currentTop = document
-        .getElementById(`row-${doc.id}`)
-        ?.getBoundingClientRect().top;
-      if (currentTop != null) window.scrollBy(0, currentTop - anchorTop);
-    });
-  }
+  if (closing) expanded.delete(doc.id);
+  else expanded.add(doc.id);
+  renderToggle(document.getElementById(`toggle-${doc.id}`), doc.id);
   const detail = detailRows.get(doc.id);
   if (closing) {
+    detail.classList.add("detail-closing");
     setTimeout(() => {
-      if (!detail || expanded.has(doc.id)) return;
+      if (expanded.has(doc.id)) return;
       detail.hidden = true;
       detail.classList.remove("detail-closing");
     }, 180);
   } else {
-    detail?.classList.remove("detail-closing");
-    detail?.classList.add("detail-enter");
-    setTimeout(() => detail?.classList.remove("detail-enter"), 220);
+    detail.hidden = false;
+    detail.classList.remove("detail-closing");
+    detail.classList.add("detail-enter");
+    setTimeout(() => detail.classList.remove("detail-enter"), 220);
     await loadDetail(doc, detail);
   }
 }

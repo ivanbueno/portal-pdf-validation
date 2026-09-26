@@ -8,6 +8,7 @@ import pytest
 from azure.storage.blob import generate_blob_sas, BlobSasPermissions
 from fastapi.testclient import TestClient
 from portal.app import create_app
+from portal.auth import LOCAL_OWNER
 from portal.config import Settings
 from portal.domain import LISTED, live_documents
 from portal.maintenance import CANDIDATES
@@ -68,12 +69,12 @@ def test_azure_end_to_end(azure):
     assert pdf.headers["content-disposition"].startswith("inline;")
     raw = client.get(f"/api/v1/documents/{doc['id']}/reports/xml?profile=pdfua-1")
     assert raw.status_code == 200 and b'isCompliant="true"' in raw.content
-    saved = store.get("local-development", doc["id"])
+    saved = store.get(LOCAL_OWNER, doc["id"])
     stale = dict(saved)
     store.save(saved)
     with pytest.raises(Conflict):
         store.save(stale)
-    blob = store.blob(f"local-development/{doc['id']}/input.pdf")
+    blob = store.blob(f"{LOCAL_OWNER}/{doc['id']}/input.pdf")
     expired = generate_blob_sas(
         account_name=store.blobs.account_name,
         container_name=settings.container,

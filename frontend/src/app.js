@@ -1,4 +1,3 @@
-import "./style.css";
 import { account, config, signIn, signOut } from "./api.js";
 import { initPreviewDialog } from "./previews-ui.js";
 import { initResults, poll } from "./results.js";

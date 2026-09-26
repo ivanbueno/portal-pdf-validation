@@ -2,7 +2,7 @@ from portal.auth import owner
 from portal.services.grouping import group_issues
 from portal.services.report_parser import parse_verapdf_xml
 from portal.worker import process_document
-from conftest import successful_runner
+from conftest import OWNER, put_input, successful_runner
 
 
 def test_group_by_specification_clause_test_preserves_profiles_and_locations():
@@ -47,7 +47,7 @@ def test_pdf_view_is_private_immutable_and_revoked(client, store, uploaded):
     url = f"/api/v1/documents/{doc_id}/pdf"
     assert client.get(url).status_code == 409
     client.post(f"/api/v1/documents/{doc_id}/submit")
-    store.put(f"local-development/{doc_id}/input.pdf", b"changed")
+    put_input(store, doc_id, b"changed")
     response = client.get(url)
     assert response.content == b"%PDF-1.7\n"
     assert response.headers["content-type"] == "application/pdf"
@@ -61,9 +61,8 @@ def test_pdf_view_is_private_immutable_and_revoked(client, store, uploaded):
     assert client.get(url).status_code == 404
 
 
-def test_metadata_and_grouping_before_pagination(client, store, settings, uploaded):
-    doc_id = uploaded["id"]
-    client.post(f"/api/v1/documents/{doc_id}/submit")
+def test_metadata_and_grouping_before_pagination(client, store, settings, submitted):
+    doc_id = submitted
 
     def runner(path, profile, s):
         result, xml = successful_runner(path, profile, s)
@@ -78,7 +77,7 @@ def test_metadata_and_grouping_before_pagination(client, store, settings, upload
         result["summary"].update(errors=201, failed_rules=1)
         return result, xml
 
-    process_document(store, settings, "local-development", doc_id, runner)
+    process_document(store, settings, OWNER, doc_id, runner)
     item = client.get("/api/v1/documents").json()["items"][0]
     assert item["page_count"] == 7 and item["pdf_available"]
     assert len(item["profiles"]) == 2 and item["profiles"][0]["summary"]["errors"] == 201
@@ -99,9 +98,8 @@ def test_page_count_and_explicit_rule_metadata():
     assert parse_verapdf_xml('<validationReport isCompliant="true"/>', 1).page_count is None
 
 
-def test_list_filters_server_side_and_reports_workspace_totals(client, store, settings, uploaded):
-    doc_id = uploaded["id"]
-    client.post(f"/api/v1/documents/{doc_id}/submit")
+def test_list_filters_server_side_and_reports_workspace_totals(client, store, settings, submitted):
+    doc_id = submitted
     pending = client.post("/api/v1/documents", json={"name": "Other.pdf", "size": 9}).json()
     queued = client.get("/api/v1/documents").json()
     assert queued["active_ids"] == [doc_id]
@@ -110,7 +108,7 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
         result, xml = successful_runner(path, profile, s)
         return result | {"page_count": 3}, xml
 
-    process_document(store, settings, "local-development", doc_id, runner)
+    process_document(store, settings, OWNER, doc_id, runner)
     page = client.get("/api/v1/documents?limit=1").json()
     assert page["total"] == page["matching"] == 2 and len(page["items"]) == 1
     assert page["processed"] == 1 and page["pages"] == 3
@@ -124,17 +122,15 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
     assert client.get("/api/v1/documents?status=deleted").status_code == 422
 
 
-def test_issue_views_read_groups_stored_at_publish(client, store, settings, uploaded, monkeypatch):
-    doc_id = uploaded["id"]
-    base = f"/api/v1/documents/{doc_id}"
-    client.post(base + "/submit")
+def test_issue_views_read_groups_stored_at_publish(client, store, settings, submitted, monkeypatch):
+    base = f"/api/v1/documents/{submitted}"
 
     def runner(path, profile, s):
         result, xml = successful_runner(path, profile, s)
         result.update(status="failed", passed=False, issues=[{"rule_id": "ISO:7.2:20", "message": "m"}] * 150)
         return result, xml
 
-    process_document(store, settings, "local-development", doc_id, runner)
+    process_document(store, settings, OWNER, submitted, runner)
     real, reads = store.read, []
     monkeypatch.setattr(store, "read", lambda name: reads.append(name.rsplit("/", 1)[1]) or real(name))
     groups = client.get(base + "/issues").json()
@@ -144,7 +140,7 @@ def test_issue_views_read_groups_stored_at_publish(client, store, settings, uplo
     assert reads[1:] == ["report.json"] and len(report["issue_groups"][0]["occurrences"]) == 300
     assert "issue_groups" not in client.get(base).json()
     # Reports published before the worker stored issue groups are grouped on request.
-    row = store.get("local-development", doc_id)
+    row = store.get(OWNER, submitted)
     del row["issues"]
     store.save(row)
     assert client.get(base + "/issues").json() == groups

@@ -6,18 +6,22 @@ import { $, node } from "./ui.js";
 
 const THUMBNAIL_WIDTH = 320;
 const ENLARGED_WIDTH = 1100;
-const previewCache = new Map();
+// Rendered previews of the last previewed document. Like its loaded PDF, one
+// document's previews are kept; images already on screen keep their own data.
+let cache = { docId: null, previews: new Map() };
 
 const fetchPdf = (id) => api(`/documents/${id}/pdf`, { download: true });
 // Rendered previews are cached per size; failures are evicted so they can retry.
 function cachedPreview(docId, occurrence, width) {
-  const key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}:${width}`;
-  if (!previewCache.has(key)) {
+  if (cache.docId !== docId) cache = { docId, previews: new Map() };
+  const { previews } = cache;
+  const key = `${occurrence.page || ""}:${occurrence.location || ""}:${width}`;
+  if (!previews.has(key)) {
     const result = renderOccurrencePreview(docId, occurrence, fetchPdf, width);
-    result.catch(() => previewCache.delete(key));
-    previewCache.set(key, result);
+    result.catch(() => previews.delete(key));
+    previews.set(key, result);
   }
-  return previewCache.get(key);
+  return previews.get(key);
 }
 const previewAlt = (image) =>
   `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;

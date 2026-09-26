@@ -17,7 +17,7 @@ function firstVisits() {
   };
 }
 
-function structureTree(pdf) {
+function buildTree(pdf) {
   const context = pdf.context;
   const resolve = (object) =>
     object instanceof PDFRef ? context.lookup(object) : object;
@@ -34,9 +34,11 @@ function structureTree(pdf) {
         ? [value]
         : [];
   };
-  const pages = pdf.getPages();
-  const pageNumber = (ref) =>
-    pages.findIndex((page) => page.ref.toString() === ref?.toString()) + 1;
+  // 1-based page numbers by page reference; 0 for anything that is not a page.
+  const pageNumbers = new Map(
+    pdf.getPages().map((page, index) => [page.ref.toString(), index + 1]),
+  );
+  const pageNumber = (ref) => (ref && pageNumbers.get(ref.toString())) || 0;
   return {
     dictionary,
     get,
@@ -44,6 +46,13 @@ function structureTree(pdf) {
     pageNumber,
     type: (object) => get(object, "S")?.toString(),
   };
+}
+
+// Tree helpers per loaded document, built once rather than for every location.
+const trees = new WeakMap();
+function structureTree(source) {
+  if (!trees.has(source)) trees.set(source, structure(source).then(buildTree));
+  return trees.get(source);
 }
 
 // Rows of a table, without descending into nested tables.
@@ -116,7 +125,7 @@ async function textBox(source, page, mcids) {
 export async function structureBounds(source, occurrence) {
   const target = objectNumbers(occurrence.location).at(-1);
   if (!target) return null;
-  const tree = structureTree(await structure(source));
+  const tree = await structureTree(source);
   const element = tree.dictionary(PDFRef.of(...target));
   if (!element) return null;
   let selected = [element];

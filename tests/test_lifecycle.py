@@ -10,7 +10,7 @@ from portal.domain import tombstone
 from portal.maintenance import sweep
 from portal.services.runner import ValidationError
 from portal.worker import process_document, summarize
-from conftest import UPLOAD, successful_runner
+from conftest import OWNER, UPLOAD, put_input, raising, successful_runner
 
 BASE = "/api/v1"
 
@@ -82,107 +82,95 @@ def test_boundary_limits(client):
 
 
 def test_incomplete_upload_can_resume(client, store):
-    b = client.post(BASE + "/documents", json={"name": "a.pdf", "size": 9}).json()
-    assert client.post(f"{BASE}/documents/{b['id']}/submit").status_code == 409
-    d = b
-    assert client.post(f"{BASE}/documents/{d['id']}/upload-url").status_code == 200
-    store.put(f"local-development/{d['id']}/input.pdf", b"%PDF-1.7\n")
-    assert client.post(f"{BASE}/documents/{b['id']}/submit").status_code == 202
+    doc = client.post(BASE + "/documents", json={"name": "a.pdf", "size": 9}).json()
+    assert client.post(f"{BASE}/documents/{doc['id']}/submit").status_code == 409
+    assert client.post(f"{BASE}/documents/{doc['id']}/upload-url").status_code == 200
+    put_input(store, doc["id"])
+    assert client.post(f"{BASE}/documents/{doc['id']}/submit").status_code == 202
 
 
 @pytest.mark.parametrize("contents", [b"not-a-pdf", b"%PDF-too-many-bytes"])
 def test_invalid_upload(client, store, uploaded, contents):
-    store.put(f"local-development/{uploaded['id']}/input.pdf", contents)
+    put_input(store, uploaded["id"], contents)
     assert client.post(f"{BASE}/documents/{uploaded['id']}/submit").status_code == 409
 
 
-def test_full_lifecycle_and_snapshot(client, store, settings, uploaded):
-    bid = uploaded["id"]
-    did = uploaded["id"]
-    assert client.post(f"{BASE}/documents/{bid}/submit").status_code == 202
-    assert client.post(f"{BASE}/documents/{bid}/submit").status_code == 202
+def test_full_lifecycle_and_snapshot(client, store, settings, submitted):
+    did = submitted
+    assert client.post(f"{BASE}/documents/{did}/submit").status_code == 202
     assert len(store.messages) == 1
-    store.get("local-development", did)
-    batch = store.get("local-development", bid)
-    assert batch["expires"] - batch["submitted"] == 72 * 3600
-    store.put(f"local-development/{did}/input.pdf", b"overwritten")
+    doc = store.get(OWNER, did)
+    assert doc["expires"] - doc["submitted"] == 72 * 3600
+    put_input(store, did, b"overwritten")
 
     def runner(path, profile, s):
         assert path.read_bytes() == b"%PDF-1.7\n"
         return successful_runner(path, profile, s)
 
-    assert process_document(store, settings, "local-development", did, runner)
-    assert process_document(store, settings, "local-development", did, runner)
+    assert process_document(store, settings, OWNER, did, runner)
+    assert process_document(store, settings, OWNER, did, runner)
     response = client.get(f"{BASE}/documents/{did}").json()
     assert response["status"] == "passed" and response["passed"]
     assert len(response["results"]) == 2
     assert client.get(f"{BASE}/documents/{did}/reports/json").json()["passed"]
     assert client.get(f"{BASE}/documents/{did}/reports/xml?profile=pdfua-1").status_code == 200
     assert client.post(f"{BASE}/documents/{did}/upload-url").status_code == 409
-    assert store.get("local-development", did)["attempts"] == 1
+    assert store.get(OWNER, did)["attempts"] == 1
 
 
-def test_partial_profile_results(client, store, settings, uploaded):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
+def test_partial_profile_results(client, store, settings, submitted):
 
     def runner(path, profile, s):
         if profile == "wcag-2.2":
             raise ValidationError("Validation timed out")
         return successful_runner(path, profile, s)
 
-    process_document(store, settings, "local-development", did, runner)
-    result = client.get(f"{BASE}/documents/{did}").json()
+    process_document(store, settings, OWNER, submitted, runner)
+    result = client.get(f"{BASE}/documents/{submitted}").json()
     assert result["status"] == "error"
     assert result["results"][0]["passed"] is True
     assert result["results"][1]["passed"] is None
-    assert client.get(f"{BASE}/documents/{did}/reports/xml?profile=wcag-2.2").status_code == 404
+    assert client.get(f"{BASE}/documents/{submitted}/reports/xml?profile=wcag-2.2").status_code == 404
 
 
 def test_outbox_recovers_queue_failure(client, store, settings, uploaded, monkeypatch):
     real = store.enqueue
-    monkeypatch.setattr(store, "enqueue", lambda *args: (_ for _ in ()).throw(ServiceRequestError("offline")))
+    monkeypatch.setattr(store, "enqueue", raising(ServiceRequestError("offline")))
     assert client.post(f"{BASE}/documents/{uploaded['id']}/submit").status_code == 503
-    assert store.get("local-development", uploaded["id"])["status"] == "queued"
+    assert store.get(OWNER, uploaded["id"])["status"] == "queued"
     monkeypatch.setattr(store, "enqueue", real)
     sweep(store, settings)
     assert len(store.messages) == 1
 
 
-def test_worker_lease_and_crash_recovery(client, store, settings, uploaded):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
-    doc = store.get("local-development", did)
+def test_worker_lease_and_crash_recovery(store, settings, submitted):
+    doc = store.get(OWNER, submitted)
     doc.update(status="running", attempts=1, lease_until=time.time() + 60, run_id="crashed")
     store.save(doc)
-    assert not process_document(store, settings, "local-development", did, successful_runner)
-    doc = store.get("local-development", did)
+    assert not process_document(store, settings, OWNER, submitted, successful_runner)
+    doc = store.get(OWNER, submitted)
     doc["lease_until"] = time.time() - 1
     store.save(doc)
     sweep(store, settings)
-    assert process_document(store, settings, "local-development", did, successful_runner)
-    assert store.get("local-development", did)["attempts"] == 2
+    assert process_document(store, settings, OWNER, submitted, successful_runner)
+    assert store.get(OWNER, submitted)["attempts"] == 2
 
 
-def test_delete_race_does_not_publish(client, store, settings, uploaded):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
-
+def test_delete_race_does_not_publish(client, store, settings, submitted):
     def runner(path, profile, s):
         if profile == "wcag-2.2":
-            assert client.delete(f"{BASE}/documents/{did}").status_code == 204
+            assert client.delete(f"{BASE}/documents/{submitted}").status_code == 204
         return successful_runner(path, profile, s)
 
-    process_document(store, settings, "local-development", did, runner)
-    assert client.get(f"{BASE}/documents/{did}").status_code == 404
-    assert store.get("local-development", did)["status"] == "deleted"
+    process_document(store, settings, OWNER, submitted, runner)
+    assert client.get(f"{BASE}/documents/{submitted}").status_code == 404
+    assert store.get(OWNER, submitted)["status"] == "deleted"
     sweep(store, settings)
     assert not store.objects
 
 
 def test_owner_isolation(client, uploaded):
     client.app.dependency_overrides[owner] = lambda: "other-user"
-    assert client.get(f"{BASE}/documents/{uploaded['id']}").status_code == 404
     did = uploaded["id"]
     for method, path in [
         ("get", f"/documents/{did}"),
@@ -195,14 +183,13 @@ def test_owner_isolation(client, uploaded):
 
 
 def test_expiration_and_late_upload_cleanup(client, store, settings, uploaded):
-    batch = store.get("local-development", uploaded["id"])
-    batch["expires"] = time.time() - 1
-    store.save(batch)
+    doc = store.get(OWNER, uploaded["id"])
+    doc["expires"] = time.time() - 1
+    store.save(doc)
     assert client.get(f"{BASE}/documents/{uploaded['id']}").status_code == 404
     sweep(store, settings)
     assert not store.objects
-    did = uploaded["id"]
-    store.put(f"local-development/{did}/input.pdf", b"late SAS write")
+    put_input(store, uploaded["id"], b"late SAS write")
     for row in store.rows():
         row["purge_after"] = time.time() - 1
         store.save(row)
@@ -211,27 +198,21 @@ def test_expiration_and_late_upload_cleanup(client, store, settings, uploaded):
 
 
 def test_document_tombstone_revokes_access_before_sweep(client, store, settings, uploaded):
-    tombstone(store, store.get("local-development", uploaded["id"]), settings)
+    tombstone(store, store.get(OWNER, uploaded["id"]), settings)
     assert client.get(f"{BASE}/documents/{uploaded['id']}").status_code == 404
     sweep(store, settings)
     assert not store.objects
 
 
-def test_three_transient_attempts(client, store, settings, uploaded, monkeypatch):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
-    monkeypatch.setattr(
-        store, "download", lambda *args: (_ for _ in ()).throw(ServiceRequestError("offline"))
-    )
-    for i in range(3):
-        process_document(store, settings, "local-development", did, successful_runner)
-    doc = store.get("local-development", did)
+def test_three_transient_attempts(store, settings, submitted, monkeypatch):
+    monkeypatch.setattr(store, "download", raising(ServiceRequestError("offline")))
+    for _ in range(3):
+        process_document(store, settings, OWNER, submitted, successful_runner)
+    doc = store.get(OWNER, submitted)
     assert doc["status"] == "error" and doc["attempts"] == 3
 
 
-def test_failed_publish_requeues_without_partial_report(client, store, settings, uploaded, monkeypatch):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
+def test_failed_publish_requeues_without_partial_report(store, settings, submitted, monkeypatch):
     real = store.save
 
     def save(entity):
@@ -240,8 +221,8 @@ def test_failed_publish_requeues_without_partial_report(client, store, settings,
         return real(entity)
 
     monkeypatch.setattr(store, "save", save)
-    assert not process_document(store, settings, "local-development", did, successful_runner)
-    doc = store.get("local-development", did)
+    assert not process_document(store, settings, OWNER, submitted, successful_runner)
+    doc = store.get(OWNER, submitted)
     assert doc["status"] == "queued" and doc["error"] == "Temporary processing failure"
     assert "report" not in doc and "profile_summaries" not in doc
 
@@ -269,17 +250,15 @@ def test_summarize_overall_status_and_fields(statuses, overall):
     assert [set(summary) for summary in summaries] == [{"profile", "status", "passed"}] * 2
 
 
-def test_issue_pagination(client, store, settings, uploaded):
-    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
-    did = uploaded["id"]
+def test_issue_pagination(client, store, settings, submitted):
 
     def runner(path, profile, s):
         r, raw = successful_runner(path, profile, s)
         r.update(issues=[{"message": str(i)} for i in range(201)], passed=False, status="failed")
         return r, raw
 
-    process_document(store, settings, "local-development", did, runner)
-    response = client.get(f"{BASE}/documents/{did}?offset=100&limit=100").json()
+    process_document(store, settings, OWNER, submitted, runner)
+    response = client.get(f"{BASE}/documents/{submitted}?offset=100&limit=100").json()
     assert len(response["results"][0]["issues"]) == 100
     assert response["results"][0]["issues"][0]["message"] == "100"
     assert response["results"][0]["issue_total"] == 201
@@ -296,9 +275,7 @@ def test_metadata_request_body_limit(client):
 
 def test_generated_key_survives_grant_failure(client, store, monkeypatch):
     real = store.upload_url
-    monkeypatch.setattr(
-        store, "upload_url", lambda *args: (_ for _ in ()).throw(ServiceRequestError("offline"))
-    )
+    monkeypatch.setattr(store, "upload_url", raising(ServiceRequestError("offline")))
     body = {"name": "a.pdf", "size": 9}
     failed = client.post(BASE + "/documents", json=body)
     assert failed.status_code == 503
@@ -312,7 +289,7 @@ def test_independent_submissions_and_history_pagination(client, store, settings,
     other = client.post(BASE + "/documents", json={"name": "missing.pdf", "size": 9}).json()
     assert client.post(f"{BASE}/documents/{other['id']}/submit").status_code == 409
     assert client.post(f"{BASE}/documents/{uploaded['id']}/submit").status_code == 202
-    assert process_document(store, settings, "local-development", uploaded["id"], successful_runner)
+    assert process_document(store, settings, OWNER, uploaded["id"], successful_runner)
     page = client.get(BASE + "/documents?limit=1").json()
     assert page["total"] == 2 and len(page["items"]) == 1
     second = client.get(BASE + "/documents?limit=1&offset=1").json()
@@ -331,15 +308,13 @@ def test_invalid_idempotency_keys(client, key):
     )
 
 
-def test_replay_after_submission_does_not_reopen_upload(client, uploaded):
-    doc_id = uploaded["id"]
-    assert client.post(f"{BASE}/documents/{doc_id}/submit").status_code == 202
+def test_replay_after_submission_does_not_reopen_upload(client, uploaded, submitted):
     replay = client.post(
         BASE + "/documents", json=UPLOAD, headers={"Idempotency-Key": uploaded["idempotency_key"]}
     )
-    assert replay.status_code == 201 and replay.json()["id"] == doc_id
+    assert replay.status_code == 201 and replay.json()["id"] == submitted
     assert replay.json()["status"] == "queued" and "upload_url" not in replay.json()
-    client.delete(f"{BASE}/documents/{doc_id}")
+    client.delete(f"{BASE}/documents/{submitted}")
     assert (
         client.post(
             BASE + "/documents", json=UPLOAD, headers={"Idempotency-Key": uploaded["idempotency_key"]}

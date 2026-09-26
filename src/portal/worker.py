@@ -14,7 +14,7 @@ from .services.runner import ValidationError, profile_error, run_profile
 from .storage import Conflict
 
 log = logging.getLogger("portal.worker")
-EXHAUSTED = "Processing failed after three attempts"
+EXHAUSTED = f"Processing failed after {MAX_ATTEMPTS} attempts"
 
 
 class Superseded(Exception):

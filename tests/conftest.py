@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from azure.core.exceptions import ResourceNotFoundError
+from portal.auth import LOCAL_OWNER as OWNER
 from portal.config import Settings
 from portal.storage import Conflict
 from portal.app import create_app
@@ -103,13 +104,35 @@ def client(settings, store):
 UPLOAD = {"name": "example.pdf", "size": 9, "profiles": ["pdfua1", "wcag"]}
 
 
+def put_input(store, doc_id, data=b"%PDF-1.7\n"):
+    """Stands in for the client's upload, which goes straight to Blob Storage."""
+    store.put(f"{OWNER}/{doc_id}/input.pdf", data)
+
+
+def raising(error):
+    """A stand-in for a storage call that always fails with `error`."""
+
+    def fail(*args, **kwargs):
+        raise error
+
+    return fail
+
+
 @pytest.fixture
 def uploaded(client, store):
     response = client.post("/api/v1/documents", json=UPLOAD)
     assert response.status_code == 201, response.text
     doc = response.json()
-    store.put(f"local-development/{doc['id']}/input.pdf", b"%PDF-1.7\n")
+    put_input(store, doc["id"])
     return doc
+
+
+@pytest.fixture
+def submitted(client, uploaded):
+    """The uploaded document's ID, once submission has queued it for a worker."""
+    response = client.post(f"/api/v1/documents/{uploaded['id']}/submit")
+    assert response.status_code == 202, response.text
+    return uploaded["id"]
 
 
 def successful_runner(path, profile, settings):

@@ -17,9 +17,9 @@ class MetadataBodyLimit:
                 return
             body.extend(event.get("body", b""))
             if len(body) > self.max_bytes:
-                return await JSONResponse({"detail": "JSON request exceeds 256 KiB"}, status_code=413)(
-                    scope, receive, send
-                )
+                return await JSONResponse(
+                    {"detail": f"JSON request exceeds {self.max_bytes // 1024} KiB"}, status_code=413
+                )(scope, receive, send)
             if not event.get("more_body", False):
                 break
         delivered = False

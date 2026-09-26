@@ -112,7 +112,7 @@ function renderOccurrences(group, docId) {
     occurrences.append(
       node(
         "p",
-        "Showing the first 100 checks. Download the JSON report for all locations.",
+        `Showing the first ${group.occurrences.length} checks. Download the JSON report for all locations.`,
         "muted",
       ),
     );
@@ -154,7 +154,9 @@ export async function loadDetail(doc, row, offset = 0) {
   try {
     // The listed document already carries the per-profile summaries, so only
     // the issue groups need the stored report.
-    const groups = await api(`/documents/${doc.id}/issues?offset=${offset}`);
+    const groups = await api(
+      `/documents/${doc.id}/issues?offset=${offset}&limit=${ISSUE_PAGE_SIZE}`,
+    );
     const violations = node("section", undefined, "grouped-issues");
     violations.append(node("h3", `Accessibility issues (${groups.total})`));
     if (!groups.total)

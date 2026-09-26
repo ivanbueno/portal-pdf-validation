@@ -255,10 +255,6 @@ h3 {
   background: var(--soft);
   color: var(--accent);
 }
-.intro {
-  color: var(--muted);
-  margin: 7px 0 25px;
-}
 .drop {
   display: flex;
   align-items: center;
@@ -517,23 +513,6 @@ h3 {
   justify-content: space-between;
   padding: 16px 0;
 }
-.filters {
-  gap: 12px;
-  justify-content: start;
-}
-.filters input,
-.filters select {
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: 7px;
-  padding: 11px 13px;
-  color: inherit;
-  font-size: 0.875rem;
-}
-.filters input {
-  flex: 1;
-  max-width: 360px;
-}
 .table-wrap {
   overflow: auto;
 }
@@ -561,22 +540,6 @@ td:first-child {
 }
 td:last-child {
   text-align: right;
-}
-.file-button {
-  text-align: left;
-  border: 0;
-  padding: 0;
-  background: none;
-  color: var(--accent);
-  font-weight: 650;
-  max-width: 350px;
-  overflow-wrap: anywhere;
-}
-.file-size {
-  display: block;
-  margin-top: 5px;
-  color: var(--muted);
-  font-size: 0.75rem;
 }
 .passed {
   color: var(--good);
@@ -743,33 +706,6 @@ dialog::backdrop {
 #confirm {
   max-width: 450px;
 }
-#detail-title {
-  overflow-wrap: anywhere;
-}
-.report-card {
-  border: 1px solid var(--line);
-  border-radius: 9px;
-  padding: 20px;
-  margin-top: 18px;
-}
-.report-card h3 {
-  margin: 0;
-}
-.report-card .summary {
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-.issue {
-  border-top: 1px solid var(--line);
-  padding: 14px 0;
-  font-size: 0.875rem;
-  line-height: 1.6;
-  overflow-wrap: anywhere;
-}
-.issue code {
-  font-size: 0.8125rem;
-  color: var(--muted);
-}
 .downloads {
   display: flex;
   gap: 10px;
@@ -876,16 +812,6 @@ dialog::backdrop {
   }
   .validation-options {
     grid-template-columns: 1fr;
-  }
-  .filters {
-    flex-wrap: wrap;
-  }
-  .filters input {
-    max-width: none;
-    width: 100%;
-  }
-  .filters select {
-    width: 100%;
   }
   .submit-row .primary {
     width: 100%;

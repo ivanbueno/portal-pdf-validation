@@ -92,6 +92,27 @@ async function renderPage(pdf, pageNumber, rects, width) {
   return canvas;
 }
 
+// A PNG data URL, encoded asynchronously: canvas.toDataURL blocks the main
+// thread. Data URLs are plain strings, so a cache can drop one that an image
+// still shows, which an object URL would need revoking for.
+async function encode(canvas) {
+  const blob = await new Promise((resolve, reject) =>
+    canvas.toBlob(
+      (png) =>
+        png
+          ? resolve(png)
+          : reject(new Error("Page preview could not be encoded")),
+      "image/png",
+    ),
+  );
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
 export async function renderOccurrencePreview(
   docId,
   occurrence,
@@ -104,7 +125,7 @@ export async function renderOccurrencePreview(
     throw new Error("No page could be matched to this veraPDF location");
   const canvas = await renderPage(source.pdf, page, rects, width);
   return {
-    src: canvas.toDataURL("image/png"),
+    src: await encode(canvas),
     page,
     precise: rects.some(validRect),
   };

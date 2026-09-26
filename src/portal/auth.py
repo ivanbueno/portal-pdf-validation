@@ -25,6 +25,8 @@ CLAIMS = {
     "name": ("name", "preferred_username", "http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"),
     "idtyp": ("idtyp",),
 }
+# Owner of every document created under the explicit local development identity.
+LOCAL_OWNER = "local-development"
 
 
 @dataclass(frozen=True)
@@ -74,7 +76,7 @@ def parse_principal(encoded, settings):
 def identity(request: Request, credentials=Depends(bearer)):
     settings = request.app.state.settings
     if settings.dev_identity and settings.environment in {"local", "test"}:
-        return Identity("local-development", "Local workspace", "user")
+        return Identity(LOCAL_OWNER, "Local workspace", "user")
     # Standalone local servers never trust user-supplied Azure headers.
     if settings.auth_mode != "easyauth" or settings.environment not in {"production", "test"}:
         raise HTTPException(401, "Easy Auth is not configured")

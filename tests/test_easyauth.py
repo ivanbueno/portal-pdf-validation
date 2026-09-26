@@ -116,10 +116,10 @@ def test_missing_permission_and_foreign_workspace(easy):
     p = principal([("tid", "tenant"), ("oid", "person")])
     assert easy.get("/api/v1/documents", headers={"x-ms-client-principal": p}).status_code == 403
     headers = {"x-ms-client-principal": principal(), "X-Requested-With": "PDFValidationPortal"}
-    batch = easy.post("/api/v1/documents", headers=headers, json={"name": "a.pdf", "size": 9}).json()
+    doc = easy.post("/api/v1/documents", headers=headers, json={"name": "a.pdf", "size": 9}).json()
     other = principal([("tid", "tenant"), ("oid", "other-person"), ("roles", "Validation.User")])
     assert (
-        easy.get("/api/v1/documents/" + batch["id"], headers={"x-ms-client-principal": other}).status_code
+        easy.get("/api/v1/documents/" + doc["id"], headers={"x-ms-client-principal": other}).status_code
         == 404
     )
 
