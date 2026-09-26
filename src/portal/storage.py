@@ -29,7 +29,9 @@ class Storage:
             credential = DefaultAzureCredential()
             account = settings.storage_account
             self.blobs = BlobServiceClient(f"https://{account}.blob.core.windows.net", credential)
-            self.tables = TableServiceClient(f"https://{account}.table.core.windows.net", credential)
+            self.tables = TableServiceClient(
+                f"https://{account}.table.core.windows.net", credential=credential
+            )
             self.queue = QueueClient(f"https://{account}.queue.core.windows.net", settings.queue, credential)
         self.table = self.tables.get_table_client(settings.table)
         self.container = self.blobs.get_container_client(settings.container)
