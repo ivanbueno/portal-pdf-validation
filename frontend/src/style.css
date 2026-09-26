@@ -1,3 +1,5 @@
+/* Each color is light-dark(light, dark): the root's color-scheme picks one,
+   following the system unless the theme toggle forces light or dark. */
 :root {
   font-family:
     Inter,
@@ -5,16 +7,17 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  color: #1b2737;
-  background: #f3f6fa;
+  color-scheme: light dark;
+  color: light-dark(#1b2737, #e5edf8);
+  background: light-dark(#f3f6fa, #101925);
   font-size: 16px;
-  --panel: #fff;
-  --muted: #5c697b;
-  --line: #dce3ec;
-  --accent: #245dab;
-  --soft: #edf3fc;
-  --good: #216d45;
-  --bad: #a4303e;
+  --panel: light-dark(#fff, #192334);
+  --muted: light-dark(#5c697b, #aebcd0);
+  --line: light-dark(#dce3ec, #35445a);
+  --accent: light-dark(#245dab, #93bcff);
+  --soft: light-dark(#edf3fc, #22354f);
+  --good: light-dark(#216d45, #81d5a1);
+  --bad: light-dark(#a4303e, #ffadb5);
   --shadow: 0 3px 20px #1b345908;
   /* The brand blue is the same in both themes, unlike --accent. */
   --brand: #245dab;
@@ -30,32 +33,11 @@
       color-mix(in srgb, var(--brand) 4%, transparent) 1px,
       transparent 1px
     );
+}
+:root[data-theme="light"] {
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --panel: #192334;
-    --muted: #aebcd0;
-    --line: #35445a;
-    --accent: #93bcff;
-    --soft: #22354f;
-    --good: #81d5a1;
-    --bad: #ffadb5;
-    color: #e5edf8;
-    background: #101925;
-    color-scheme: dark;
-  }
-}
 :root[data-theme="dark"] {
-  --panel: #192334;
-  --muted: #aebcd0;
-  --line: #35445a;
-  --accent: #93bcff;
-  --soft: #22354f;
-  --good: #81d5a1;
-  --bad: #ffadb5;
-  color: #e5edf8;
-  background: #101925;
   color-scheme: dark;
 }
 * {

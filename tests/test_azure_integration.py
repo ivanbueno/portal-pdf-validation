@@ -115,7 +115,6 @@ def test_service_prefilters_match_python_checks(azure):
                     PartitionKey=owner,
                     RowKey=key,
                     id=key,
-                    kind="document",
                     name=key + ".pdf",
                     status=status,
                     created=now,
@@ -124,7 +123,6 @@ def test_service_prefilters_match_python_checks(azure):
                     fingerprint="not listed",
                 )
             )
-    store.insert(dict(PartitionKey="owner-a", RowKey="other", kind="other", status="queued", expires=now))
 
     listed = live_documents(store, "owner-a", now)
     assert {row["id"] for row in listed} == {"uploading", "passed", "queued", "running"}

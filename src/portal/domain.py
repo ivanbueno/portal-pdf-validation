@@ -51,7 +51,7 @@ def is_live(row, now=None):
 
 
 # Everything `public`, `matches`, and `document_stats` read from a listed row.
-LISTED = sorted(PUBLIC | {"kind", "requested_profiles", "profile_summaries", "snapshot"})
+LISTED = sorted(PUBLIC | {"requested_profiles", "profile_summaries", "snapshot"})
 
 
 def live_documents(store, owner, now, select=LISTED):
@@ -61,11 +61,11 @@ def live_documents(store, owner, now, select=LISTED):
     """
     rows = store.rows(
         owner,
-        where=f"kind eq 'document' and status ne '{Status.DELETED}' and expires gt @now",
+        where=f"status ne '{Status.DELETED}' and expires gt @now",
         parameters={"now": now},
         select=select,
     )
-    return [row for row in rows if row.get("kind") == "document" and is_live(row, now)]
+    return [row for row in rows if is_live(row, now)]
 
 
 def matches(row, query, status):
@@ -86,9 +86,6 @@ def document_stats(rows):
     return {
         "processed": sum(row["status"] in TERMINAL for row in rows),
         "passed_by_profile": passed,
-        # Deprecated per-profile fields, kept for existing API clients.
-        "ua_passed": passed["pdfua-1"],
-        "wcag_passed": passed["wcag-2.2"],
         "pages": sum(row.get("page_count") or 0 for row in rows),
         "active_ids": [row["id"] for row in rows if row["status"] in PROCESSING],
     }
@@ -105,7 +102,7 @@ def input_blob(doc):
 def get_owned(store, owner, doc_id):
     """The owner's live document; anything else is indistinguishable from a missing one."""
     row = store.get(owner, doc_id)
-    if not row or row.get("kind") != "document" or not is_live(row):
+    if not row or not is_live(row):
         raise HTTPException(404, "Not found")
     return row
 
@@ -122,7 +119,6 @@ def reserve(store, settings, owner, body, key):
                     PartitionKey=owner,
                     RowKey=doc_id,
                     id=doc_id,
-                    kind="document",
                     name=body.name,
                     **({"size": body.size} if body.size is not None else {}),
                     requested_profiles=json.dumps(body.profiles),

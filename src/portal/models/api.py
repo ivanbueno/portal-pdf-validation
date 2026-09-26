@@ -80,8 +80,6 @@ class DocumentPage(BaseModel):
     matching: int
     processed: int
     passed_by_profile: dict[ProfileId, int]
-    ua_passed: int = Field(deprecated="Use passed_by_profile")
-    wcag_passed: int = Field(deprecated="Use passed_by_profile")
     pages: int
     active_ids: list[str]
 

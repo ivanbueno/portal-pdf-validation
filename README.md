@@ -60,7 +60,7 @@ uvicorn portal.app:create_app --factory --host 127.0.0.1 --port 8000 --no-access
 # Separate terminals: pdf-worker --loop; pdf-maintenance --loop
 ```
 
-For frontend hot reload, run `npm run dev --prefix frontend` and use `http://127.0.0.1:5173`. Stop the Compose API first if using the Python API on port 8000. The frontend build targets modern browsers supporting ES2022.
+For frontend hot reload, run `npm run dev --prefix frontend` and use `http://127.0.0.1:5173`. Stop the Compose API first if using the Python API on port 8000. The frontend supports Chrome and Edge 123, Safari 17.5, and Firefox 120 or later: its colors use CSS `light-dark()`, and its scripts target ES2022.
 
 ```sh
 ruff check src tests scripts

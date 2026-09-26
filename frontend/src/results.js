@@ -299,18 +299,33 @@ async function toggleDetail(doc, forceOpen = false) {
   const detail = detailRows.get(doc.id);
   if (closing) {
     detail.classList.add("detail-closing");
-    setTimeout(() => {
+    afterAnimation(detail, "detail-exit", () => {
       if (expanded.has(doc.id)) return;
       detail.hidden = true;
       detail.classList.remove("detail-closing");
-    }, 180);
+    });
   } else {
     detail.hidden = false;
     detail.classList.remove("detail-closing");
     detail.classList.add("detail-enter");
-    setTimeout(() => detail.classList.remove("detail-enter"), 220);
-    await loadDetail(doc, detail);
+    // loadDetail replaces the animated content at once, so wait for it first.
+    const loading = loadDetail(doc, detail);
+    afterAnimation(detail, "detail-enter", () =>
+      detail.classList.remove("detail-enter"),
+    );
+    await loading;
   }
+}
+
+// Runs `then` once the CSS animation `name` within `element` ends, however
+// long the stylesheet makes it; also when it is cancelled or never started.
+function afterAnimation(element, name, then) {
+  const animations = element
+    .getAnimations({ subtree: true })
+    .filter((animation) => animation.animationName === name);
+  Promise.allSettled(animations.map((animation) => animation.finished)).then(
+    then,
+  );
 }
 
 // The shared confirmation dialog, set up for one removal. `onConfirm` runs when

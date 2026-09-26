@@ -643,3 +643,57 @@ test("the last row's action menu is not clipped by the table", async ({
   });
   expect(hidden).toBe(false);
 });
+
+test("details open and close once their animations end, even when interrupted", async ({
+  page,
+}) => {
+  const now = Date.now() / 1000;
+  await page.route("**/api/v1/documents?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "animated",
+            name: "animated.pdf",
+            size: 9,
+            status: "passed",
+            created: now,
+            expires: now + 3600,
+            validation_profiles: ["wcag"],
+            profiles: [],
+            pdf_available: false,
+            attempts: 1,
+          },
+        ],
+        total: 1,
+        matching: 1,
+        processed: 1,
+        passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
+        pages: 0,
+        active_ids: [],
+      },
+    }),
+  );
+  await page.route("**/api/v1/documents/animated/issues?*", (route) =>
+    route.fulfill({ json: { items: [], total: 0, offset: 0, limit: 100 } }),
+  );
+  await page.goto("/");
+  const toggle = page.getByRole("button", {
+    name: "Validation details for animated.pdf",
+  });
+  const detail = page.locator("#details-animated");
+  await toggle.click();
+  await expect(detail).toContainText("No automated rule failures found.");
+  await expect(detail).not.toHaveClass(/detail-enter/);
+  await toggle.click();
+  await expect(detail).toBeHidden();
+  await expect(detail).not.toHaveClass(/detail-closing/);
+  // Reopening mid-close cancels the exit animation; the row must stay open.
+  await toggle.click();
+  await toggle.click();
+  await toggle.click();
+  await expect(detail).toBeVisible();
+  await expect(detail).not.toHaveClass(/detail-closing|detail-enter/);
+  await page.waitForTimeout(400);
+  await expect(detail).toBeVisible();
+});
