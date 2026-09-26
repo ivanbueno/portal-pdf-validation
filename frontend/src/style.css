@@ -295,12 +295,6 @@ h3 {
 .drop span:not(.upload-icon) {
   font-size: 0.9375rem;
 }
-.drop small {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  flex-basis: 100%;
-  margin-top: -2px;
-}
 .browse {
   color: var(--accent);
   text-decoration: underline;
@@ -383,12 +377,6 @@ h3 {
   accent-color: var(--accent);
   width: 20px;
   height: 20px;
-}
-.validation-options p {
-  grid-column: 1 / -1;
-  margin: 0 0 0 30px;
-  color: var(--muted);
-  font-size: 0.875rem;
 }
 .submit-row {
   padding-top: 22px;
@@ -740,9 +728,6 @@ dialog::backdrop {
   display: block;
   padding: 12px;
 }
-.loading {
-  opacity: 0.65;
-}
 [hidden] {
   display: none !important;
 }
@@ -827,10 +812,6 @@ dialog::backdrop {
     grid-template-columns: 1fr;
   }
   .submit-row .primary {
-    width: 100%;
-  }
-  .submit-row .muted {
-    text-align: center;
     width: 100%;
   }
   footer {
