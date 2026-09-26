@@ -80,10 +80,6 @@ See [Azure deployment](docs/azure.md) for Entra registration, infrastructure, pe
 
 See [API guide](docs/api.md), [Python client](scripts/validate.py), and [attribution](licenses/NOTICE.md).
 
-## Updating the earlier batch-based preview
-
-The API now exposes documents only. Before starting this version against existing preview storage, stop the API, workers, and maintenance, then run `python -m portal.migrate` with that storage configuration. This idempotent migration preserves document IDs, ownership, snapshots, reports, expiration, and deletion state, and removes old parent records. Fresh deployments need no migration. Existing batch clients must switch to the document workflow in the API guide.
-
 ## Document results
 
 Filename links open the submitted PDF in a new tab. Each row shows submission date, page count, and separate PDF/UA-1 and WCAG outcomes/error counts. Expand the chevron for issues consolidated by specification, clause, and test, including profile badges and individual check locations. The split report button downloads JSON; its dropdown offers per-profile XML, details, and deletion.

@@ -170,15 +170,7 @@ def create_app(settings=None, storage=None):
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
         query = q.strip().casefold()
         matching = [r for r in rows if matches(r, query, status)]
-        items = []
-        for row in matching[offset : offset + limit]:
-            item = public(row)
-            # Reports created before summary metadata was introduced remain visible.
-            if row.get("report") and "profile_summaries" not in row:
-                saved = report(row)
-                item["profiles"] = [{k: v for k, v in r.items() if k != "issues"} for r in saved["results"]]
-                item["page_count"] = saved.get("page_count")
-            items.append(item)
+        items = [public(row) for row in matching[offset : offset + limit]]
         return {"items": items, "total": len(rows), "matching": len(matching)} | document_stats(rows)
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)

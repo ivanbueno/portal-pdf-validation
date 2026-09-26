@@ -263,47 +263,6 @@ def test_independent_submissions_and_history_pagination(client, store, settings,
     assert client.get(f"{BASE}/documents/{uploaded['id']}").json()["status"] == "passed"
 
 
-def test_preview_migration_preserves_records_and_revocation(store, settings):
-    from portal.migrate import migrate
-
-    for status in ("submitted", "deleted"):
-        parent = store.insert(
-            dict(
-                PartitionKey="owner",
-                RowKey=status,
-                id=status,
-                kind="batch",
-                status=status,
-                submitted=time.time(),
-                expires=time.time() + 9000,
-            )
-        )
-        store.insert(
-            dict(
-                PartitionKey="owner",
-                RowKey=status + "-000",
-                id=status + "-000",
-                kind="document",
-                batch_id=status,
-                status="uploading",
-                snapshot="immutable",
-                expires=1,
-                name="a.pdf",
-                size=9,
-                attempts=0,
-            )
-        )
-        assert parent
-    migrate(store, settings)
-    migrate(store, settings)
-    queued = store.get("owner", "submitted-000")
-    deleted = store.get("owner", "deleted-000")
-    assert queued["status"] == "queued" and queued["snapshot"] == "immutable"
-    assert queued["expires"] > time.time() and "batch_id" not in queued
-    assert deleted["status"] == "deleted" and deleted["purge_after"] > time.time()
-    assert len(store.rows()) == 2
-
-
 @pytest.mark.parametrize("key", ["", "has spaces", "x" * 129, "unsafe\r\nheader"])
 def test_invalid_idempotency_keys(client, key):
     assert (

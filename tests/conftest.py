@@ -54,7 +54,7 @@ class MemoryStorage:
             raise ValueError("invalid")
         snapshot = uuid.uuid4().hex
         self.objects[(name, snapshot)] = data
-        return snapshot
+        return snapshot, len(data)
 
     def enqueue(self, owner, doc_id):
         self.messages.append({"owner": owner, "document_id": doc_id})

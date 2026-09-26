@@ -9,6 +9,7 @@ from ..models.responses import Issue, ValidationSummary
 _PAGE_PATTERN = re.compile(r"\bpage\s*(\d+)\b", re.IGNORECASE)
 _VERAPDF_PAGE_PATTERN = re.compile(r"(?:^|/)pages\[(\d+)(?:-\d+)?\]")
 _VERAPDF_JSON_BBOX_PATTERN = re.compile(r'"p"\s*:\s*(\d+)')
+_PAGE_PATTERNS = ((_PAGE_PATTERN, 0), (_VERAPDF_PAGE_PATTERN, 1), (_VERAPDF_JSON_BBOX_PATTERN, 1))
 
 
 @dataclass(frozen=True)
@@ -169,11 +170,9 @@ def _build_rule_id(rule: ET.Element) -> str | None:
 
 def _infer_category(text: str) -> str | None:
     lower = text.lower()
-    if any(
-        token in lower for token in ("tag", "structure", "rolemap", "artifact", "marked content", "marked")
-    ):
+    if any(token in lower for token in ("tag", "structure", "rolemap", "artifact", "marked")):
         return "structure"
-    if any(token in lower for token in ("language", "metadata", "title", "lang")):
+    if any(token in lower for token in ("lang", "metadata", "title")):
         return "metadata"
     if any(token in lower for token in ("font", "unicode", "encoding", "glyph")):
         return "font"
@@ -181,24 +180,12 @@ def _infer_category(text: str) -> str | None:
 
 
 def _extract_page(text: str) -> int | None:
-    text = text or ""
-    match = _PAGE_PATTERN.search(text)
-    page_offset = 0
-    if not match:
-        match = _VERAPDF_PAGE_PATTERN.search(text)
-        if match:
-            page_offset = 1
-    if not match:
-        match = _VERAPDF_JSON_BBOX_PATTERN.search(text)
-        if match:
-            page_offset = 1
-    if not match:
-        return None
-    try:
-        page = int(match.group(1)) + page_offset
-    except ValueError:
-        return None
-    return page if page > 0 else None
+    # Human-readable "page N" is 1-based; veraPDF paths and bounding boxes are 0-based.
+    for pattern, page_offset in _PAGE_PATTERNS:
+        if match := pattern.search(text or ""):
+            page = int(match.group(1)) + page_offset
+            return page if page > 0 else None
+    return None
 
 
 def _safe_int(value: str | None) -> int:

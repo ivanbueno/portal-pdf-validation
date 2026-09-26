@@ -1,7 +1,6 @@
 import json
 import hashlib
 import time
-import uuid
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
@@ -103,7 +102,6 @@ def get_owned(store, owner, key, kind):
 
 def reserve(store, settings, owner, body, key):
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
-    key = key or str(uuid.uuid4())
     doc_id = hashlib.sha256(f"{owner}:{key}".encode()).hexdigest()[:32]
     doc = store.get(owner, doc_id)
     if not doc:
@@ -139,11 +137,7 @@ def submit(store, settings, owner, doc_id):
     doc = get_owned(store, owner, doc_id, "document")
     if doc["status"] == "uploading":
         try:
-            snapshot_result = store.snapshot(prefix(doc) + "input.pdf", doc.get("size"))
-            if isinstance(snapshot_result, tuple):
-                snapshot, size = snapshot_result
-            else:  # Compatibility with storage adapters that return only the snapshot ID.
-                snapshot, size = snapshot_result, doc.get("size")
+            snapshot, size = store.snapshot(prefix(doc) + "input.pdf", doc.get("size"))
         except (ResourceNotFoundError, ResourceModifiedError, ValueError):
             raise HTTPException(409, "Upload incomplete or invalid")
         now = time.time()
