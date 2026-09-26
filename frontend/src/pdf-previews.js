@@ -12,14 +12,18 @@ import {
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 let cachedDocument;
-const objectRefs = (location) =>
+// veraPDF locations name PDF objects as "(12 0 obj ...)".
+const objectNumbers = (location) =>
   [...(location || "").matchAll(/\((?:<)?(\d+)\s+(\d+)\s+obj/g)].map(
-    (match) => `${match[1]}R`,
+    (match) => [Number(match[1]), Number(match[2])],
   );
-
+// pdf.js annotation IDs.
+const objectRefs = (location) =>
+  objectNumbers(location).map(([number]) => `${number}R`);
+// pdf-lib references.
 const structureRefs = (location) =>
-  [...(location || "").matchAll(/\((?:<)?(\d+)\s+(\d+)\s+obj/g)].map((match) =>
-    PDFRef.of(Number(match[1]), Number(match[2])),
+  objectNumbers(location).map(([number, generation]) =>
+    PDFRef.of(number, generation),
   );
 
 function explicitBounds(location) {
@@ -73,9 +77,47 @@ const toViewportRect = (viewport, rect) => {
   ];
 };
 
+async function scanMarkedContent(document, pageNumber) {
+  const page = await document.getPage(pageNumber);
+  const content = await page.getTextContent({ includeMarkedContent: true });
+  const byMcid = new Map();
+  const markedContent = [];
+  for (const item of content.items) {
+    if (item.type === "beginMarkedContentProps") {
+      const id = Number(item.id?.match(/_mc(\d+)$/)?.[1]);
+      markedContent.push(Number.isFinite(id) ? id : null);
+    } else if (item.type === "endMarkedContent") {
+      markedContent.pop();
+    } else if (item.str?.trim()) {
+      const id = [...markedContent].reverse().find((value) => value !== null);
+      if (id === undefined) continue;
+      const [, , c, d, x, y] = item.transform;
+      const height = Math.hypot(c, d) || item.height || 0;
+      const rect = [x, y, x + (item.width || 0), y + height];
+      if (!validRect(rect)) continue;
+      if (!byMcid.has(id)) byMcid.set(id, []);
+      byMcid.get(id).push(rect);
+    }
+  }
+  return byMcid;
+}
+
+// Text rectangles grouped by marked-content ID (MCID), scanned once per page.
+function markedContentRects(pageNumber) {
+  const cache = (cachedDocument.markedContent ||= new Map());
+  if (!cache.has(pageNumber)) {
+    const scan = scanMarkedContent(cachedDocument.document, pageNumber);
+    scan.catch(() => cache.delete(pageNumber));
+    cache.set(pageNumber, scan);
+  }
+  return cache.get(pageNumber);
+}
+
 async function loadDocument(docId, fetchPdf) {
   if (cachedDocument?.docId === docId) return cachedDocument.promise;
-  if (cachedDocument?.document) await cachedDocument.document.destroy();
+  // pdf.js 6 removed PDFDocumentProxy.destroy(); the loading task owns cleanup.
+  if (cachedDocument?.document)
+    await cachedDocument.document.loadingTask.destroy();
   const entry = { docId, dataPromise: null, document: null, promise: null };
   cachedDocument = entry;
   const promise = (async () => {
@@ -101,27 +143,9 @@ async function deriveContentItemBounds(occurrence) {
   );
   if (!match || !cachedDocument?.document) return null;
   const pageNumber = Number(match[1]) + 1;
-  const markedContentId = Number(match[2]);
-  const page = await cachedDocument.document.getPage(pageNumber);
-  const content = await page.getTextContent({ includeMarkedContent: true });
   const itemIndex = Number(match[3]);
-  const rects = [];
-  const markedContent = [];
-  for (const item of content.items) {
-    if (item.type === "beginMarkedContentProps") {
-      const id = Number(item.id?.match(/_mc(\d+)$/)?.[1]);
-      markedContent.push(Number.isFinite(id) ? id : null);
-    } else if (item.type === "endMarkedContent") {
-      markedContent.pop();
-    } else {
-      const id = [...markedContent].reverse().find((value) => value !== null);
-      if (id !== markedContentId || !item.str?.trim()) continue;
-      const [, , c, d, x, y] = item.transform;
-      const height = Math.hypot(c, d) || item.height || 0;
-      const rect = [x, y, x + (item.width || 0), y + height];
-      if (validRect(rect)) rects.push(rect);
-    }
-  }
+  const rects =
+    (await markedContentRects(pageNumber)).get(Number(match[2])) || [];
   if (!rects.length) return null;
   const selected = rects[itemIndex] ? [rects[itemIndex]] : rects;
   return { page: pageNumber, rects: [unionRects(selected)] };
@@ -239,40 +263,8 @@ async function deriveStructuralBounds(occurrence) {
         rowLocations.push({ page: pageNumber, rects: [] });
         continue;
       }
-      const page = await cachedDocument.document.getPage(pageNumber);
-      const content = await page.getTextContent({ includeMarkedContent: true });
-      const boxes = new Map([...wanted].map((id) => [id, null]));
-      const markedContent = [];
-      for (const item of content.items) {
-        if (item.type === "beginMarkedContentProps") {
-          const id = Number(item.id?.match(/_mc(\d+)$/)?.[1]);
-          markedContent.push(Number.isFinite(id) ? id : null);
-        } else if (item.type === "endMarkedContent") {
-          markedContent.pop();
-        } else {
-          const id = [...markedContent]
-            .reverse()
-            .find((value) => value !== null);
-          if (!boxes.has(id) || !item.str?.trim()) continue;
-          const [, , c, d, x, y] = item.transform;
-          const height = Math.hypot(c, d) || item.height || 0;
-          const width = item.width || 0;
-          const rect = [x, y, x + width, y + height];
-          const previous = boxes.get(id);
-          boxes.set(
-            id,
-            previous
-              ? [
-                  Math.min(previous[0], rect[0]),
-                  Math.min(previous[1], rect[1]),
-                  Math.max(previous[2], rect[2]),
-                  Math.max(previous[3], rect[3]),
-                ]
-              : rect,
-          );
-        }
-      }
-      const rects = [...boxes.values()].filter(validRect);
+      const byMcid = await markedContentRects(pageNumber);
+      const rects = [...wanted].flatMap((id) => byMcid.get(id) || []);
       rowLocations.push({
         page: pageNumber,
         rects: rects.length ? [unionRects(rects)] : [],

@@ -10,17 +10,27 @@ from fastapi.responses import JSONResponse, Response, FileResponse, StreamingRes
 from fastapi.staticfiles import StaticFiles
 from azure.core.exceptions import AzureError
 from .auth import owner, identity, Identity
-from .config import Settings, PROFILES, DISCLAIMER, MAX_FILE, MAX_SELECTION
+from .config import (
+    Settings,
+    PROFILES,
+    PROFILE_LABELS,
+    PROFILE_SHORT_NAMES,
+    DISCLAIMER,
+    MAX_FILE,
+    MAX_FILES,
+    MAX_SELECTION,
+)
 from .domain import (
     FileInput,
     reserve,
     submit,
     get_owned,
+    input_blob,
+    is_live,
     document_view,
     document_stats,
     matches,
     public,
-    prefix,
     tombstone,
 )
 from .storage import Storage, Conflict
@@ -116,10 +126,14 @@ def create_app(settings=None, storage=None):
         return {
             "local": settings.dev_identity,
             "authMode": "local" if settings.dev_identity else settings.auth_mode,
-            "maxFiles": 200,
+            "maxFiles": MAX_FILES,
             "maxFileBytes": MAX_FILE,
             "maxSelectionBytes": MAX_SELECTION,
             "disclaimer": DISCLAIMER,
+            "profiles": [
+                {"id": profile, "alias": PROFILE_SHORT_NAMES[profile], "label": PROFILE_LABELS[profile]}
+                for profile in PROFILES
+            ],
         }
 
     @app.get("/api/session", include_in_schema=False)
@@ -162,11 +176,7 @@ def create_app(settings=None, storage=None):
         status: Literal["all", "active", "passed", "failed", "error"] = "all",
     ):
         now = time.time()
-        rows = [
-            r
-            for r in storage.rows(principal)
-            if r.get("kind") == "document" and r["status"] != "deleted" and r["expires"] > now
-        ]
+        rows = [r for r in storage.rows(principal) if r.get("kind") == "document" and is_live(r, now)]
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
         query = q.strip().casefold()
         matching = [r for r in rows if matches(r, query, status)]
@@ -178,7 +188,7 @@ def create_app(settings=None, storage=None):
         doc = get_owned(storage, principal, doc_id, "document")
         if doc["status"] != "uploading":
             raise HTTPException(409, "Upload is already finalized")
-        url, expires = storage.upload_url(prefix(doc) + "input.pdf")
+        url, expires = storage.upload_url(input_blob(doc))
         return {"upload_url": url, "upload_expires": expires}
 
     def report(doc):
@@ -203,7 +213,7 @@ def create_app(settings=None, storage=None):
         doc = get_owned(storage, principal, doc_id, "document")
         if not doc.get("snapshot"):
             raise HTTPException(409, "PDF available after submission")
-        chunks = storage.stream(prefix(doc) + "input.pdf", doc["snapshot"])
+        chunks = storage.stream(input_blob(doc), doc["snapshot"])
         return StreamingResponse(
             chunks,
             media_type="application/pdf",

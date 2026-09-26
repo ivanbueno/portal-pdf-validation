@@ -1,3 +1,4 @@
+import { LOGIN_URL, LOGOUT_URL } from "./common.js";
 export const config = await fetch("/api/config").then((r) => {
   if (!r.ok) throw new Error("Configuration unavailable");
   return r.json();
@@ -13,10 +14,8 @@ const session = config.local
       },
     );
 export const account = () => session;
-export const signIn = () =>
-  location.assign("/.auth/login/aad?post_login_redirect_uri=%2F");
-export const signOut = () =>
-  location.assign("/.auth/logout?post_logout_redirect_uri=%2F");
+export const signIn = () => location.assign(LOGIN_URL);
+export const signOut = () => location.assign(LOGOUT_URL);
 export async function api(path, options = {}) {
   if (!account()) throw new Error("Sign in to access your workspace.");
   const headers = {
@@ -30,7 +29,7 @@ export async function api(path, options = {}) {
     credentials: "same-origin",
   });
   if (response.status === 401) {
-    location.assign("/.auth/login/aad?post_login_redirect_uri=%2F");
+    signIn();
     throw new Error("Your session expired. Sign in again.");
   }
   if (!response.ok) {

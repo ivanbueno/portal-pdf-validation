@@ -4,8 +4,14 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 MAX_FILE = 200 * 1024 * 1024
+MAX_FILES = 200
 MAX_SELECTION = 2 * 1024 * 1024 * 1024
+MAX_ATTEMPTS = 3
 PROFILES = ("pdfua-1", "wcag-2.2")
+# Short names accepted on requests and returned as `validation_profiles`.
+PROFILE_ALIASES = {"pdfua1": "pdfua-1", "wcag": "wcag-2.2"}
+PROFILE_SHORT_NAMES = {profile: alias for alias, profile in PROFILE_ALIASES.items()}
+PROFILE_LABELS = {"pdfua-1": "PDF/UA-1", "wcag-2.2": "WCAG 2.2"}
 DISCLAIMER = (
     "Automated checks do not establish full accessibility or WCAG conformance. Manual review is required."
 )

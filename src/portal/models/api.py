@@ -2,11 +2,12 @@
 
 from typing import Literal
 from pydantic import BaseModel, Field
+from ..config import PROFILES, PROFILE_ALIASES
 from .responses import Issue, ValidationSummary
 
 
 class ProfileResult(BaseModel):
-    profile: Literal["pdfua-1", "wcag-2.2"]
+    profile: Literal[PROFILES]
     status: Literal["passed", "failed", "error"]
     passed: bool | None
     summary: ValidationSummary | None = None
@@ -20,7 +21,9 @@ class DocumentView(BaseModel):
     page_count: int | None = None
     pdf_available: bool = False
     profiles: list[ProfileResult] = Field(default_factory=list)
-    validation_profiles: list[Literal["pdfua1", "wcag"]] = Field(default_factory=lambda: ["pdfua1", "wcag"])
+    validation_profiles: list[Literal[tuple(PROFILE_ALIASES)]] = Field(
+        default_factory=lambda: list(PROFILE_ALIASES)
+    )
     idempotency_key: str | None = None
     name: str
     size: int | None = None

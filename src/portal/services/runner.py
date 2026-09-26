@@ -31,6 +31,11 @@ def run_profile(path, profile, settings):
     start = time.monotonic()
     with tempfile.TemporaryDirectory() as folder:
         output, errors = Path(folder) / "report.xml", Path(folder) / "stderr"
+
+        def check_output_size():
+            if output.stat().st_size + errors.stat().st_size > settings.report_limit:
+                raise ValidationError("Validation report exceeded the output limit")
+
         with output.open("wb") as out, errors.open("wb") as err:
             try:
                 process = subprocess.Popen(args, stdout=out, stderr=err, start_new_session=True)
@@ -40,15 +45,13 @@ def run_profile(path, profile, settings):
                 while process.poll() is None:
                     if time.monotonic() - start > settings.profile_timeout:
                         raise ValidationError("Validation timed out")
-                    if output.stat().st_size + errors.stat().st_size > settings.report_limit:
-                        raise ValidationError("Validation report exceeded the output limit")
+                    check_output_size()
                     time.sleep(0.05)
             finally:
                 if process.poll() is None:
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
-        if output.stat().st_size + errors.stat().st_size > settings.report_limit:
-            raise ValidationError("Validation report exceeded the output limit")
+        check_output_size()
         raw = output.read_bytes()
         try:
             parsed = parse_verapdf_xml(raw.decode("utf-8"), int((time.monotonic() - start) * 1000))

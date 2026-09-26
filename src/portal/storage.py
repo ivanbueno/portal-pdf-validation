@@ -124,7 +124,7 @@ class Storage:
         blob = self.blob(name)
         props = blob.get_blob_properties()
         if props.size <= 0 or props.size > MAX_FILE:
-            raise ValueError("Uploaded file exceeds the 200 MiB limit")
+            raise ValueError(f"Uploaded file exceeds the {MAX_FILE // 2**20} MiB limit")
         if expected_size is not None and props.size != expected_size:
             raise ValueError("Uploaded size does not match the reserved file size")
         if (

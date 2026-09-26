@@ -1,4 +1,5 @@
 import "./style.css";
+import { LOGOUT_URL, scheduleNoticeFade } from "./common.js";
 import("./app.js").catch((error) => {
   const notice = document.getElementById("notice");
   notice.hidden = false;
@@ -11,14 +12,9 @@ import("./app.js").catch((error) => {
     : "The workspace could not start. Check your connection and reload this page.";
   if (denied) {
     const logout = document.createElement("a");
-    logout.href = "/.auth/logout?post_logout_redirect_uri=%2F";
+    logout.href = LOGOUT_URL;
     logout.textContent = "Sign out";
     notice.append(logout);
   }
-  setTimeout(() => {
-    notice.classList.add("notice-leaving");
-    setTimeout(() => {
-      notice.hidden = true;
-    }, 250);
-  }, 8000);
+  scheduleNoticeFade(notice, 8000);
 });

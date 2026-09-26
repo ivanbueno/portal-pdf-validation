@@ -4,23 +4,24 @@ import time
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
-from .config import MAX_FILE
+from .config import MAX_FILE, PROFILES, PROFILE_ALIASES, PROFILE_SHORT_NAMES
 from .storage import Conflict
+
+ACTIVE = {"uploading", "queued", "running"}
+TERMINAL = {"passed", "failed", "error"}
 
 
 class FileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=240)
     size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
-    profiles: list[str] = Field(default_factory=lambda: ["pdfua-1", "wcag-2.2"], min_length=1)
+    profiles: list[str] = Field(default_factory=lambda: list(PROFILES), min_length=1)
 
     @field_validator("profiles")
     @classmethod
     def validation_profiles(cls, value):
-        aliases = {"pdfua1": "pdfua-1", "wcag": "wcag-2.2"}
-        value = [aliases.get(profile, profile) for profile in value]
-        supported = {"pdfua-1", "wcag-2.2"}
-        if len(value) != len(set(value)) or not set(value) <= supported:
+        value = [PROFILE_ALIASES.get(profile, profile) for profile in value]
+        if len(value) != len(set(value)) or not set(value) <= set(PROFILES):
             raise ValueError("Choose WCAG 2.2, PDF/UA-1, or both")
         return value
 
@@ -52,17 +53,18 @@ PUBLIC = {
 
 def public(row):
     return {key: value for key, value in row.items() if key in PUBLIC} | {
-        "validation_profiles": [
-            {"pdfua-1": "pdfua1", "wcag-2.2": "wcag"}.get(profile, profile)
-            for profile in json.loads(row.get("requested_profiles", json.dumps(["pdfua-1", "wcag-2.2"])))
-        ],
+        "validation_profiles": [PROFILE_SHORT_NAMES[profile] for profile in requested_profiles(row)],
         "profiles": json.loads(row.get("profile_summaries", "[]")),
         "pdf_available": bool(row.get("snapshot")),
     }
 
 
-ACTIVE = {"uploading", "queued", "running"}
-TERMINAL = {"passed", "failed", "error"}
+def requested_profiles(row):
+    return json.loads(row["requested_profiles"]) if "requested_profiles" in row else list(PROFILES)
+
+
+def is_live(row, now=None):
+    return row["status"] != "deleted" and row["expires"] > (now or time.time())
 
 
 def matches(row, query, status):
@@ -75,7 +77,7 @@ def matches(row, query, status):
 
 def document_stats(rows):
     """Workspace totals, so clients never page through every document for summary cards."""
-    passed = {"pdfua-1": 0, "wcag-2.2": 0}
+    passed = dict.fromkeys(PROFILES, 0)
     for row in rows:
         for summary in json.loads(row.get("profile_summaries", "[]")):
             if summary.get("status") == "passed" and summary.get("profile") in passed:
@@ -93,9 +95,13 @@ def prefix(doc):
     return f"{doc['PartitionKey']}/{doc['id']}/"
 
 
+def input_blob(doc):
+    return prefix(doc) + "input.pdf"
+
+
 def get_owned(store, owner, key, kind):
     row = store.get(owner, key)
-    if not row or row.get("kind") != kind or row["status"] == "deleted" or row["expires"] <= time.time():
+    if not row or row.get("kind") != kind or not is_live(row):
         raise HTTPException(404, "Not found")
     return row
 
@@ -128,7 +134,7 @@ def reserve(store, settings, owner, body, key):
             doc = store.get(owner, doc_id)
     if doc.get("fingerprint") != fingerprint:
         raise HTTPException(409, "Idempotency key was already used for different document metadata")
-    if doc["status"] == "deleted" or doc["expires"] <= time.time():
+    if not is_live(doc):
         raise HTTPException(409, "This idempotency key belongs to an expired or deleted document")
     return doc
 
@@ -137,7 +143,7 @@ def submit(store, settings, owner, doc_id):
     doc = get_owned(store, owner, doc_id, "document")
     if doc["status"] == "uploading":
         try:
-            snapshot, size = store.snapshot(prefix(doc) + "input.pdf", doc.get("size"))
+            snapshot, size = store.snapshot(input_blob(doc), doc.get("size"))
         except (ResourceNotFoundError, ResourceModifiedError, ValueError):
             raise HTTPException(409, "Upload incomplete or invalid")
         now = time.time()
@@ -177,5 +183,5 @@ def tombstone(store, row, settings):
 def document_view(store, doc, uploads=False):
     item = public(doc)
     if uploads and doc["status"] == "uploading":
-        item["upload_url"], item["upload_expires"] = store.upload_url(prefix(doc) + "input.pdf")
+        item["upload_url"], item["upload_expires"] = store.upload_url(input_blob(doc))
     return item

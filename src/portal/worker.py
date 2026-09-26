@@ -1,4 +1,3 @@
-import argparse
 import json
 import logging
 from pathlib import Path
@@ -6,12 +5,14 @@ import tempfile
 import time
 import uuid
 from azure.core.exceptions import AzureError
-from .config import Settings, PROFILES, DISCLAIMER
-from .domain import prefix
+from .cli import run
+from .config import DISCLAIMER, MAX_ATTEMPTS
+from .domain import input_blob, prefix, requested_profiles
 from .services.runner import run_profile, ValidationError
-from .storage import Storage, Conflict
+from .storage import Conflict
 
 log = logging.getLogger("portal.worker")
+EXHAUSTED = "Processing failed after three attempts"
 
 
 def active(store, doc):
@@ -32,8 +33,8 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         return True
     if doc["status"] == "running" and doc.get("lease_until", 0) > time.time():
         return False
-    if doc["attempts"] >= 3:
-        doc.update(status="error", error="Processing failed after three attempts")
+    if doc["attempts"] >= MAX_ATTEMPTS:
+        doc.update(status="error", error=EXHAUSTED)
         store.save(doc)
         return True
     doc.update(
@@ -52,8 +53,8 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         results, raw_reports = [], {}
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "input.pdf"
-            store.download(prefix(doc) + "input.pdf", path, doc["snapshot"])
-            for profile in json.loads(doc.get("requested_profiles", json.dumps(PROFILES))):
+            store.download(input_blob(doc), path, doc["snapshot"])
+            for profile in requested_profiles(doc):
                 if not active(store, doc):
                     return True
                 try:
@@ -108,12 +109,11 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         return True
     except (AzureError, OSError):
         if active(store, doc):
+            retry = doc["attempts"] < MAX_ATTEMPTS
             doc.update(
-                status="queued" if doc["attempts"] < 3 else "error",
+                status="queued" if retry else "error",
                 dispatched=0.0,
-                error="Temporary processing failure"
-                if doc["attempts"] < 3
-                else "Processing failed after three attempts",
+                error="Temporary processing failure" if retry else EXHAUSTED,
             )
             try:
                 store.save(doc)
@@ -140,19 +140,7 @@ def once(store, settings):
 
 
 def main():
-    logging.basicConfig(level=logging.INFO, format="%(message)s")
-    logging.getLogger("azure").setLevel(logging.WARNING)
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--loop", action="store_true")
-    args = parser.parse_args()
-    settings = Settings()
-    store = Storage(settings)
-    store.initialize()
-    while True:
-        once(store, settings)
-        if not args.loop:
-            break
-        time.sleep(2)
+    run(once, interval=2)
 
 
 if __name__ == "__main__":

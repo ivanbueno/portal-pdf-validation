@@ -1,5 +1,6 @@
 import "./style.css";
 import { renderOccurrencePreview } from "./pdf-previews.js";
+import { scheduleNoticeFade } from "./common.js";
 import {
   api,
   config,
@@ -18,10 +19,15 @@ const labels = {
   failed: "Failed checks",
   error: "Processing error",
 };
+const ACTIVE = ["uploading", "queued", "running"];
+const TERMINAL = ["passed", "failed", "error"];
 const size = (bytes) =>
   bytes < 1048576
     ? `${(bytes / 1024).toFixed(1)} KiB`
     : `${(bytes / 1048576).toFixed(1)} MiB`;
+// Whole-number binary units for configured limits, e.g. "200 MiB", "2 GiB".
+const limit = (bytes) =>
+  bytes >= 1073741824 ? `${bytes / 1073741824} GiB` : `${bytes / 1048576} MiB`;
 const node = (tag, text, className) => {
   const el = document.createElement(tag);
   if (text !== undefined) el.textContent = text;
@@ -42,32 +48,21 @@ let staged = [],
   documentLimit = 20,
   pollDelay = 2500,
   pollTimer,
-  noticeTimer,
-  noticeFadeTimer;
+  cancelNoticeFade;
 function notify(text, error = false) {
   const notice = $("notice");
-  clearTimeout(noticeTimer);
-  clearTimeout(noticeFadeTimer);
+  cancelNoticeFade?.();
   notice.classList.remove("notice-leaving");
   notice.hidden = !text;
   notice.textContent = text;
   notice.classList.toggle("error", error);
   notice.setAttribute("role", error ? "alert" : "status");
-  if (text) {
-    noticeTimer = setTimeout(
-      () => {
-        notice.classList.add("notice-leaving");
-        noticeFadeTimer = setTimeout(() => {
-          notice.hidden = true;
-        }, 250);
-      },
-      error ? 8000 : 5000,
-    );
-  }
+  if (text) cancelNoticeFade = scheduleNoticeFade(notice, error ? 8000 : 5000);
 }
 function showError(error) {
   notify(error.message || String(error), true);
 }
+const stagedBytes = () => staged.reduce((n, s) => n + s.file.size, 0);
 function renderStaging() {
   $("staging").hidden = !staged.length;
   $("submit").disabled =
@@ -75,7 +70,7 @@ function renderStaging() {
   $("clear").disabled = busy;
   $("files").disabled = busy;
   $("staged-total").textContent =
-    `${staged.length} files · ${size(staged.reduce((n, s) => n + s.file.size, 0))}`;
+    `${staged.length} files · ${size(stagedBytes())}`;
   $("staged-body").replaceChildren(
     ...staged.map((s, i) => {
       const tr = node("tr");
@@ -114,15 +109,20 @@ function addFiles(files) {
       continue;
     }
     if (!file.size || file.size > config.maxFileBytes) {
-      notify(`${file.name}: file must be between 1 byte and 200 MiB.`, true);
+      notify(
+        `${file.name}: file must be between 1 byte and ${limit(config.maxFileBytes)}.`,
+        true,
+      );
       continue;
     }
     if (
       staged.length >= config.maxFiles ||
-      staged.reduce((n, s) => n + s.file.size, 0) + file.size >
-        config.maxSelectionBytes
+      stagedBytes() + file.size > config.maxSelectionBytes
     ) {
-      notify("This selection exceeds the 200-file or 2 GiB limit.", true);
+      notify(
+        `This selection exceeds the ${config.maxFiles}-file or ${limit(config.maxSelectionBytes)} limit.`,
+        true,
+      );
       break;
     }
     staged.push({ file, state: "Ready" });
@@ -312,7 +312,7 @@ function renderResults() {
     const tr = node(
       "tr",
       undefined,
-      `document-row${["uploading", "queued", "running"].includes(d.status) ? " is-processing" : ""}${d.status === "running" ? " is-running" : ""}`,
+      `document-row${ACTIVE.includes(d.status) ? " is-processing" : ""}${d.status === "running" ? " is-running" : ""}`,
     );
     tr.id = `row-${d.id}`;
     const file = node("td"),
@@ -354,12 +354,8 @@ function renderResults() {
     fileLayout.append(toggle, info);
     file.append(fileLayout);
     const status = node("td", undefined, "profile-outcomes");
-    const requestedProfiles = (
-      d.validation_profiles ||
-      d.profiles?.map((r) => r.profile) || ["pdfua-1", "wcag-2.2"]
-    ).map(
-      (profile) =>
-        ({ pdfua1: "pdfua-1", wcag: "wcag-2.2" })[profile] || profile,
+    const requestedProfiles = d.validation_profiles.map(
+      (alias) => profileIds[alias] || alias,
     );
     for (const profile of requestedProfiles) {
       const result = d.profiles?.find((r) => r.profile === profile);
@@ -401,8 +397,7 @@ function renderResults() {
       download(d.id, "json"),
     );
     reportButton.id = `report-${d.id}`;
-    reportButton.disabled =
-      !["passed", "failed", "error"].includes(d.status) || !d.profiles?.length;
+    reportButton.disabled = !TERMINAL.includes(d.status) || !d.profiles?.length;
     const menu = node("details", undefined, "action-dropdown");
     menu.id = `actions-${d.id}`;
     menu.open = openMenus.has(menu.id);
@@ -503,8 +498,26 @@ const expanded = new Set(),
   detailRows = new Map();
 let renderedSignature = "";
 const previewCache = new Map();
-const profileLabel = (profile) =>
-  profile === "pdfua-1" ? "PDF/UA-1" : "WCAG 2.2";
+const profileIds = Object.fromEntries(
+  config.profiles.map((p) => [p.alias, p.id]),
+);
+const profileLabels = Object.fromEntries(
+  config.profiles.map((p) => [p.id, p.label]),
+);
+const profileLabel = (profile) => profileLabels[profile] || profile;
+const fetchPdf = (id) => api(`/documents/${id}/pdf`, { download: true });
+// Rendered previews are cached per size; failures are evicted so they can retry.
+function cachedPreview(docId, occurrence, width) {
+  const key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}:${width}`;
+  if (!previewCache.has(key)) {
+    const result = renderOccurrencePreview(docId, occurrence, fetchPdf, width);
+    result.catch(() => previewCache.delete(key));
+    previewCache.set(key, result);
+  }
+  return previewCache.get(key);
+}
+const previewAlt = (image) =>
+  `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
 async function loadOccurrencePreviews(previews, docId, occurrences) {
   for (const [index, preview] of previews.entries()) {
     if (preview.dataset.previewsLoaded) continue;
@@ -520,20 +533,8 @@ async function loadOccurrencePreviews(previews, docId, occurrences) {
       continue;
     }
     preview.textContent = "Loading page preview…";
-    let key;
     try {
-      key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}`;
-      let result = previewCache.get(key);
-      if (!result) {
-        result = renderOccurrencePreview(
-          docId,
-          occurrence,
-          (id) => api(`/documents/${id}/pdf`, { download: true }),
-          320,
-        );
-        previewCache.set(key, result);
-      }
-      const image = await result;
+      const image = await cachedPreview(docId, occurrence, 320);
       const button = node("button", undefined, "preview-thumb");
       button.type = "button";
       button.setAttribute(
@@ -542,7 +543,7 @@ async function loadOccurrencePreviews(previews, docId, occurrences) {
       );
       const thumbnail = node("img");
       thumbnail.src = image.src;
-      thumbnail.alt = `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+      thumbnail.alt = previewAlt(image);
       button.append(thumbnail);
       button.onclick = () => openPreview(docId, occurrence, image);
       preview.classList.remove("muted");
@@ -552,7 +553,6 @@ async function loadOccurrencePreviews(previews, docId, occurrences) {
       );
     } catch (error) {
       delete preview.dataset.previewsLoaded;
-      if (key) previewCache.delete(key);
       preview.textContent = "PDF page preview unavailable.";
       preview.title = error instanceof Error ? error.message : String(error);
       console.warn("PDF occurrence preview failed", {
@@ -779,28 +779,15 @@ async function openPreview(docId, occurrence, thumbnail) {
   $("preview-title").textContent =
     `PDF page ${thumbnail.page} · ${occurrence.message}`;
   $("preview-image").src = thumbnail.src;
-  $("preview-image").alt =
-    `PDF page ${thumbnail.page}${thumbnail.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+  $("preview-image").alt = previewAlt(thumbnail);
   $("preview-note").textContent = "Loading enlarged page…";
   dialog.showModal();
   $("preview-close").focus();
   try {
-    const key = `${docId}:${occurrence.page || ""}:${occurrence.location || ""}:large`;
-    let result = previewCache.get(key);
-    if (!result) {
-      result = renderOccurrencePreview(
-        docId,
-        occurrence,
-        (id) => api(`/documents/${id}/pdf`, { download: true }),
-        1100,
-      );
-      previewCache.set(key, result);
-    }
-    const image = await result;
+    const image = await cachedPreview(docId, occurrence, 1100);
     if (!dialog.open) return;
     $("preview-image").src = image.src;
-    $("preview-image").alt =
-      `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
+    $("preview-image").alt = previewAlt(image);
     $("preview-note").textContent = image.precise
       ? "Red box uses the coordinates or form annotation bounds identified by veraPDF."
       : "No precise coordinates could be derived from this veraPDF location; the page is shown without a highlight.";
