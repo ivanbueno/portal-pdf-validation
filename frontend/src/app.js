@@ -509,7 +509,8 @@ async function loadOccurrencePreviews(previews, docId, occurrences) {
       !occurrence.page &&
       /(?:^|\/)metadata\[\d+\]|XMPPackage/i.test(occurrence.location || "")
     ) {
-      preview.textContent = "Document-level check; no page preview is available.";
+      preview.textContent =
+        "Document-level check; no page preview is available.";
       preview.title = occurrence.location || "Document-level veraPDF location";
       continue;
     }
