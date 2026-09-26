@@ -36,7 +36,6 @@ from .domain import (
 )
 from .events import configure_logging, log_event
 from .storage import Storage, Conflict
-from .services.grouping import group_issues, issue_view
 from .middleware import MetadataBodyLimit
 from .models.api import (
     DeletedDocuments,
@@ -254,11 +253,8 @@ def create_app(settings=None, storage=None):
 
     @app.get("/api/v1/documents/{doc_id}/issues")
     def grouped_issues(doc: Document, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)):
-        if doc.get("issues"):
-            groups = json.loads(storage.read(doc["issues"]))
-        else:
-            # Unfinished documents, and reports published before the worker stored issue groups.
-            groups = issue_view(group_issues(report(doc)["results"]))
+        # The worker stores the groups with the report; unfinished documents have none yet.
+        groups = json.loads(storage.read(doc["issues"])) if doc.get("issues") else []
         return {
             "items": groups[offset : offset + limit],
             "total": len(groups),
@@ -272,14 +268,9 @@ def create_app(settings=None, storage=None):
         if not doc.get("report"):
             raise HTTPException(409, "Report not available yet")
         if format == "json":
-            if doc.get("issues"):
-                # Stored with its issue groups, so it is served as published.
-                body = storage.read(doc["report"])
-            else:
-                saved = report(doc)
-                body = json.dumps(saved | {"issue_groups": group_issues(saved["results"])})
+            # Stored with its issue groups, so it is served as published.
             return Response(
-                body,
+                storage.read(doc["report"]),
                 media_type="application/json",
                 headers={"Content-Disposition": f'attachment; filename="{doc_id}.json"'},
             )

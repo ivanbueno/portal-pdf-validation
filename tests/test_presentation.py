@@ -110,6 +110,7 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
 
 def test_issue_views_read_groups_stored_at_publish(client, store, settings, submitted, monkeypatch):
     base = f"/api/v1/documents/{submitted}"
+    assert client.get(base + "/issues").json() == {"items": [], "total": 0, "offset": 0, "limit": 100}
 
     def runner(path, profile, s):
         result, xml = successful_runner(path, profile, s)
@@ -125,9 +126,3 @@ def test_issue_views_read_groups_stored_at_publish(client, store, settings, subm
     report = client.get(base + "/reports/json").json()
     assert reads[1:] == ["report.json"] and len(report["issue_groups"][0]["occurrences"]) == 300
     assert "issue_groups" not in client.get(base).json()
-    # Reports published before the worker stored issue groups are grouped on request.
-    row = store.get(OWNER, submitted)
-    del row["issues"]
-    store.save(row)
-    assert client.get(base + "/issues").json() == groups
-    assert client.get(base + "/reports/json").json() == report
