@@ -200,6 +200,10 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
           { id: "pdfua-1", alias: "pdfua1", label: "PDF/UA-1" },
           { id: "wcag-2.2", alias: "wcag", label: "WCAG 2.2" },
         ],
+        statuses: {
+          active: ["uploading", "queued", "running"],
+          terminal: ["passed", "failed", "error"],
+        },
       },
     }),
   );
@@ -222,8 +226,7 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
               total: 0,
               matching: 0,
               processed: 0,
-              ua_passed: 0,
-              wcag_passed: 0,
+              passed_by_profile: { "pdfua-1": 0, "wcag-2.2": 0 },
               pages: 0,
               active_ids: [],
             },

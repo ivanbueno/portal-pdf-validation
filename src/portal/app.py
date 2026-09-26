@@ -4,7 +4,7 @@ import time
 import uuid
 from urllib.parse import quote
 from contextlib import asynccontextmanager
-from typing import Annotated, Literal
+from typing import Annotated
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -12,13 +12,14 @@ from azure.core.exceptions import AzureError
 from .auth import owner, identity, Identity
 from .config import (
     Settings,
+    ACTIVE,
     PROFILES,
-    PROFILE_LABELS,
-    PROFILE_SHORT_NAMES,
+    TERMINAL,
     DISCLAIMER,
     MAX_FILE,
     MAX_FILES,
     MAX_SELECTION,
+    Status,
 )
 from .domain import (
     FileInput,
@@ -37,7 +38,7 @@ from .events import log_event
 from .storage import Storage, Conflict
 from .services.grouping import group_issues
 from .middleware import MetadataBodyLimit
-from .models.api import DocumentView, DocumentPage, DocumentDetail, UploadGrant
+from .models.api import DocumentView, DocumentPage, DocumentDetail, StatusFilter, UploadGrant
 
 log = logging.getLogger("portal")
 log.setLevel(logging.INFO)
@@ -129,9 +130,10 @@ def create_app(settings=None, storage=None):
             "maxSelectionBytes": MAX_SELECTION,
             "disclaimer": DISCLAIMER,
             "profiles": [
-                {"id": profile, "alias": PROFILE_SHORT_NAMES[profile], "label": PROFILE_LABELS[profile]}
-                for profile in PROFILES
+                {"id": profile_id, "alias": profile.alias, "label": profile.label}
+                for profile_id, profile in PROFILES.items()
             ],
+            "statuses": {"active": ACTIVE, "terminal": TERMINAL},
         }
 
     @app.get("/api/session", include_in_schema=False)
@@ -171,7 +173,7 @@ def create_app(settings=None, storage=None):
         offset: int = Query(0, ge=0),
         limit: int = Query(20, ge=1, le=100),
         q: str = Query("", max_length=240),
-        status: Literal["all", "active", "passed", "failed", "error"] = "all",
+        status: StatusFilter = "all",
     ):
         now = time.time()
         rows = live_documents(storage, principal, now)
@@ -184,7 +186,7 @@ def create_app(settings=None, storage=None):
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
     def renew_upload(doc_id: str, principal: Owner):
         doc = get_owned(storage, principal, doc_id, "document")
-        if doc["status"] != "uploading":
+        if doc["status"] != Status.UPLOADING:
             raise HTTPException(409, "Upload is already finalized")
         url, expires = storage.upload_url(input_blob(doc))
         return {"upload_url": url, "upload_expires": expires}

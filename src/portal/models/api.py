@@ -2,13 +2,25 @@
 
 from typing import Literal
 from pydantic import BaseModel, Field
-from ..config import PROFILES, PROFILE_ALIASES
+from ..config import ACTIVE, DEFAULT_PROFILES, PROFILES, PROFILE_ALIASES, TERMINAL
 from .responses import Issue, ValidationSummary
 
 
+def _literal(values):
+    """A Literal of plain strings, so OpenAPI enumerates the values."""
+    return Literal[tuple(str(value) for value in values)]
+
+
+ProfileId = _literal(PROFILES)
+ProfileAlias = _literal(PROFILE_ALIASES)
+DocumentStatus = _literal(ACTIVE + TERMINAL)
+# `active` selects every ACTIVE status.
+StatusFilter = _literal(("all", "active", *TERMINAL))
+
+
 class ProfileResult(BaseModel):
-    profile: Literal[PROFILES]
-    status: Literal["passed", "failed", "error"]
+    profile: ProfileId
+    status: _literal(TERMINAL)
     passed: bool | None
     summary: ValidationSummary | None = None
     error: str | None = None
@@ -21,13 +33,13 @@ class DocumentView(BaseModel):
     page_count: int | None = None
     pdf_available: bool = False
     profiles: list[ProfileResult] = Field(default_factory=list)
-    validation_profiles: list[Literal[tuple(PROFILE_ALIASES)]] = Field(
-        default_factory=lambda: list(PROFILE_ALIASES)
+    validation_profiles: list[ProfileAlias] = Field(
+        default_factory=lambda: [PROFILES[profile].alias for profile in DEFAULT_PROFILES]
     )
     idempotency_key: str | None = None
     name: str
     size: int | None = None
-    status: Literal["uploading", "queued", "running", "passed", "failed", "error"]
+    status: DocumentStatus
     created: float
     expires: float
     submitted: float | None = None
@@ -43,8 +55,9 @@ class DocumentPage(BaseModel):
     total: int
     matching: int
     processed: int
-    ua_passed: int
-    wcag_passed: int
+    passed_by_profile: dict[ProfileId, int]
+    ua_passed: int = Field(deprecated="Use passed_by_profile")
+    wcag_passed: int = Field(deprecated="Use passed_by_profile")
     pages: int
     active_ids: list[str]
 

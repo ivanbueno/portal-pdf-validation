@@ -99,9 +99,13 @@ def client(settings, store):
     return TestClient(create_app(settings, store))
 
 
+# Requests every profile (the API default is WCAG only) so shared tests cover multi-profile results.
+UPLOAD = {"name": "example.pdf", "size": 9, "profiles": ["pdfua1", "wcag"]}
+
+
 @pytest.fixture
 def uploaded(client, store):
-    response = client.post("/api/v1/documents", json={"name": "example.pdf", "size": 9})
+    response = client.post("/api/v1/documents", json=UPLOAD)
     assert response.status_code == 201, response.text
     doc = response.json()
     store.put(f"local-development/{doc['id']}/input.pdf", b"%PDF-1.7\n")

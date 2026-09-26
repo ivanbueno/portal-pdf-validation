@@ -4,25 +4,31 @@ import time
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
-from .config import MAX_FILE, PROFILES, PROFILE_ALIASES, PROFILE_SHORT_NAMES
+from .config import (
+    ACTIVE,
+    DEFAULT_PROFILES,
+    MAX_FILE,
+    PROCESSING,
+    PROFILES,
+    PROFILE_ALIASES,
+    TERMINAL,
+    Status,
+)
 from .storage import Conflict
-
-ACTIVE = {"uploading", "queued", "running"}
-TERMINAL = {"passed", "failed", "error"}
 
 
 class FileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=240)
     size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
-    profiles: list[str] = Field(default_factory=lambda: list(PROFILES), min_length=1)
+    profiles: list[str] = Field(default_factory=lambda: list(DEFAULT_PROFILES), min_length=1)
 
     @field_validator("profiles")
     @classmethod
     def validation_profiles(cls, value):
         value = [PROFILE_ALIASES.get(profile, profile) for profile in value]
         if len(value) != len(set(value)) or not set(value) <= set(PROFILES):
-            raise ValueError("Choose WCAG 2.2, PDF/UA-1, or both")
+            raise ValueError(f"Choose one or more of: {', '.join(PROFILE_ALIASES)}")
         return value
 
     @field_validator("name")
@@ -53,18 +59,19 @@ PUBLIC = {
 
 def public(row):
     return {key: value for key, value in row.items() if key in PUBLIC} | {
-        "validation_profiles": [PROFILE_SHORT_NAMES[profile] for profile in requested_profiles(row)],
+        "validation_profiles": [PROFILES[profile].alias for profile in requested_profiles(row)],
         "profiles": json.loads(row.get("profile_summaries", "[]")),
         "pdf_available": bool(row.get("snapshot")),
     }
 
 
 def requested_profiles(row):
+    # Rows from before profile selection ran every profile.
     return json.loads(row["requested_profiles"]) if "requested_profiles" in row else list(PROFILES)
 
 
 def is_live(row, now=None):
-    return row["status"] != "deleted" and row["expires"] > (now or time.time())
+    return row["status"] != Status.DELETED and row["expires"] > (now or time.time())
 
 
 # Everything `public`, `matches`, and `document_stats` read from a listed row.
@@ -75,7 +82,7 @@ def live_documents(store, owner, now):
     """The owner's live documents: filtered by Table Storage, then re-checked here."""
     rows = store.rows(
         owner,
-        where="kind eq 'document' and status ne 'deleted' and expires gt @now",
+        where=f"kind eq 'document' and status ne '{Status.DELETED}' and expires gt @now",
         parameters={"now": now},
         select=LISTED,
     )
@@ -95,14 +102,16 @@ def document_stats(rows):
     passed = dict.fromkeys(PROFILES, 0)
     for row in rows:
         for summary in json.loads(row.get("profile_summaries", "[]")):
-            if summary.get("status") == "passed" and summary.get("profile") in passed:
+            if summary.get("status") == Status.PASSED and summary.get("profile") in passed:
                 passed[summary["profile"]] += 1
     return {
         "processed": sum(row["status"] in TERMINAL for row in rows),
+        "passed_by_profile": passed,
+        # Deprecated per-profile fields, kept for existing API clients.
         "ua_passed": passed["pdfua-1"],
         "wcag_passed": passed["wcag-2.2"],
         "pages": sum(row.get("page_count") or 0 for row in rows),
-        "active_ids": [row["id"] for row in rows if row["status"] in {"queued", "running"}],
+        "active_ids": [row["id"] for row in rows if row["status"] in PROCESSING],
     }
 
 
@@ -137,7 +146,7 @@ def reserve(store, settings, owner, body, key):
                     name=body.name,
                     **({"size": body.size} if body.size is not None else {}),
                     requested_profiles=json.dumps(body.profiles),
-                    status="uploading",
+                    status=Status.UPLOADING,
                     created=now,
                     expires=now + settings.upload_ttl,
                     attempts=0,
@@ -156,7 +165,7 @@ def reserve(store, settings, owner, body, key):
 
 def submit(store, settings, owner, doc_id):
     doc = get_owned(store, owner, doc_id, "document")
-    if doc["status"] == "uploading":
+    if doc["status"] == Status.UPLOADING:
         try:
             snapshot, size = store.snapshot(input_blob(doc), doc.get("size"))
         except (ResourceNotFoundError, ResourceModifiedError, ValueError):
@@ -166,7 +175,7 @@ def submit(store, settings, owner, doc_id):
         doc.update(
             snapshot=snapshot,
             size=size,
-            status="queued",
+            status=Status.QUEUED,
             submitted=now,
             expires=now + settings.retention_seconds,
             dispatched=0.0,
@@ -181,7 +190,7 @@ def dispatch_document(store, doc):
     Returns the current row: the saved one after a send, otherwise `doc` unchanged.
     """
     now = time.time()
-    if doc["status"] == "queued" and doc["expires"] > now and doc.get("dispatched", 0) < now - 120:
+    if doc["status"] == Status.QUEUED and doc["expires"] > now and doc.get("dispatched", 0) < now - 120:
         store.enqueue(doc["PartitionKey"], doc["id"])
         doc["dispatched"] = now
         return store.save(doc)
@@ -189,7 +198,7 @@ def dispatch_document(store, doc):
 
 
 def tombstone(store, row, settings):
-    row["status"] = "deleted"
+    row["status"] = Status.DELETED
     # Keep tombstones beyond all previously issued upload URLs and worker leases.
     row["purge_after"] = time.time() + max(settings.upload_ttl, settings.lease_seconds) + 60
     return store.save(row)
@@ -197,6 +206,6 @@ def tombstone(store, row, settings):
 
 def document_view(store, doc, uploads=False):
     item = public(doc)
-    if uploads and doc["status"] == "uploading":
+    if uploads and doc["status"] == Status.UPLOADING:
         item["upload_url"], item["upload_expires"] = store.upload_url(input_blob(doc))
     return item

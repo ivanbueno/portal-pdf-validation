@@ -19,7 +19,7 @@ const PAGE_SIZE = 20;
 const PROFILE_STATE = { passed: "Pass", failed: "Fail", error: "Error" };
 
 let documents = [],
-  stats = { total: 0, active_ids: [] },
+  stats = { total: 0, active_ids: [], passed_by_profile: {} },
   documentLimit = PAGE_SIZE,
   // Documents submitted in the current batch, tracked by the progress bar.
   progressDocumentIds = new Set(),
@@ -47,8 +47,8 @@ export function showBatch() {
 function renderStats() {
   $("count").textContent = stats.total;
   $("stat-processed").textContent = stats.processed;
-  $("stat-wcag").textContent = stats.wcag_passed;
-  $("stat-ua").textContent = stats.ua_passed;
+  for (const stat of document.querySelectorAll("[data-passed-profile]"))
+    stat.textContent = stats.passed_by_profile[stat.dataset.passedProfile] ?? 0;
   $("stat-pages").textContent = stats.pages;
   // Deleted or expired submissions count as finished so progress never stalls.
   const active = new Set(stats.active_ids),

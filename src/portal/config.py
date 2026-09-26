@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Literal
 from pydantic import model_validator
@@ -7,11 +9,47 @@ MAX_FILE = 200 * 1024 * 1024
 MAX_FILES = 200
 MAX_SELECTION = 2 * 1024 * 1024 * 1024
 MAX_ATTEMPTS = 3
-PROFILES = ("pdfua-1", "wcag-2.2")
-# Short names accepted on requests and returned as `validation_profiles`.
-PROFILE_ALIASES = {"pdfua1": "pdfua-1", "wcag": "wcag-2.2"}
-PROFILE_SHORT_NAMES = {profile: alias for alias, profile in PROFILE_ALIASES.items()}
-PROFILE_LABELS = {"pdfua-1": "PDF/UA-1", "wcag-2.2": "WCAG 2.2"}
+
+
+@dataclass(frozen=True)
+class Profile:
+    label: str
+    # Short name accepted on requests and returned as `validation_profiles`.
+    alias: str
+    # Built-in veraPDF flavour; None validates against the configured `Settings.profile_path`.
+    flavour: str | None = None
+    # Run when a request omits `profiles`.
+    default: bool = False
+
+
+# Every validation profile by ID. Requests, reports, workspace stats, and the portal derive from it.
+PROFILES = {
+    "pdfua-1": Profile(label="PDF/UA-1", alias="pdfua1", flavour="ua1"),
+    "wcag-2.2": Profile(label="WCAG 2.2", alias="wcag", default=True),
+}
+PROFILE_ALIASES = {profile.alias: profile_id for profile_id, profile in PROFILES.items()}
+DEFAULT_PROFILES = tuple(profile_id for profile_id, profile in PROFILES.items() if profile.default)
+
+
+class Status(StrEnum):
+    """Document lifecycle. Members are strings, so stored and JSON values stay plain text."""
+
+    UPLOADING = "uploading"
+    QUEUED = "queued"
+    RUNNING = "running"
+    PASSED = "passed"
+    FAILED = "failed"
+    ERROR = "error"
+    DELETED = "deleted"
+
+
+# Awaiting an upload or a worker.
+ACTIVE = (Status.UPLOADING, Status.QUEUED, Status.RUNNING)
+# Submitted and not yet finished: what workers pick up and the portal's progress bar waits on.
+PROCESSING = (Status.QUEUED, Status.RUNNING)
+# Validation finished; also the per-profile result outcomes.
+TERMINAL = (Status.PASSED, Status.FAILED, Status.ERROR)
+
 DISCLAIMER = (
     "Automated checks do not establish full accessibility or WCAG conformance. Manual review is required."
 )
@@ -52,6 +90,7 @@ class Settings(BaseSettings):
                 raise ValueError("Production requires Azure Easy Auth and managed identity")
             if not all((self.tenant_id, self.audience, self.storage_account)):
                 raise ValueError("Production requires tenant, audience, and storage account")
-        if self.profile_timeout <= 0 or self.lease_seconds < 2 * self.profile_timeout + 120:
-            raise ValueError("Worker lease must exceed both profile timeouts plus 120 seconds")
+        # One worker runs a document's profiles sequentially within one lease.
+        if self.profile_timeout <= 0 or self.lease_seconds < len(PROFILES) * self.profile_timeout + 120:
+            raise ValueError("Worker lease must exceed every profile timeout combined plus 120 seconds")
         return self

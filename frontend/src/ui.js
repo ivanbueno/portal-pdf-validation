@@ -4,8 +4,8 @@ import { config } from "./api.js";
 
 export const $ = (id) => document.getElementById(id);
 
-export const ACTIVE = ["uploading", "queued", "running"];
-export const TERMINAL = ["passed", "failed", "error"];
+// Status groups come from the server, which owns the document lifecycle.
+export const { active: ACTIVE, terminal: TERMINAL } = config.statuses;
 export const statusLabels = {
   uploading: "Awaiting upload",
   queued: "Queued",

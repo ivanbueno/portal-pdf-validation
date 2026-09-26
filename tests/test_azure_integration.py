@@ -41,7 +41,8 @@ def test_azure_end_to_end(azure):
     client = TestClient(create_app(settings, store))
     path = Path("tests/fixtures/ua-pass.pdf")
     data = path.read_bytes()
-    doc = client.post("/api/v1/documents", json={"name": path.name, "size": len(data)}).json()
+    body = {"name": path.name, "size": len(data), "profiles": ["pdfua1", "wcag"]}
+    doc = client.post("/api/v1/documents", json=body).json()
     response = httpx.put(
         doc["upload_url"], content=data, headers={"x-ms-blob-type": "BlockBlob"}, trust_env=False
     )

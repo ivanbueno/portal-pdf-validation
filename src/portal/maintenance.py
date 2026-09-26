@@ -3,15 +3,15 @@ import time
 from azure.core.exceptions import AzureError
 from .cli import run
 from .events import log_event
+from .config import PROCESSING, Status
 from .domain import dispatch_document, tombstone, prefix
 from .storage import Conflict
 
 log = logging.getLogger("portal.maintenance")
 # Rows the sweep can act on. Unexpired uploads and finished results need nothing, so the
 # service skips them. Full rows (with ETags) are required because the sweep saves them.
-CANDIDATES = (
-    "kind eq 'document' and ( status eq 'deleted' or status eq 'queued' or status eq 'running'"
-    " or expires le @now )"
+CANDIDATES = "kind eq 'document' and ( {} or expires le @now )".format(
+    " or ".join(f"status eq '{status}'" for status in (Status.DELETED, *PROCESSING))
 )
 
 
@@ -22,14 +22,14 @@ def sweep(store, settings):
         try:
             if row["kind"] != "document":
                 continue
-            if row["status"] != "deleted" and row["expires"] <= now:
+            if row["status"] != Status.DELETED and row["expires"] <= now:
                 row = tombstone(store, row, settings)
-            if row["status"] == "deleted":
+            if row["status"] == Status.DELETED:
                 store.purge(prefix(row))
                 if row["purge_after"] <= now:
                     store.remove(row)
-            elif row["status"] == "running" and row.get("lease_until", 0) <= now:
-                row.update(status="queued", dispatched=0.0)
+            elif row["status"] == Status.RUNNING and row.get("lease_until", 0) <= now:
+                row.update(status=Status.QUEUED, dispatched=0.0)
                 row = store.save(row)
             dispatch_document(store, row)
         except Conflict:

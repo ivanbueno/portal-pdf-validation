@@ -6,7 +6,7 @@ import time
 import uuid
 from azure.core.exceptions import AzureError
 from .cli import run
-from .config import DISCLAIMER, MAX_ATTEMPTS
+from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status
 from .events import log_event
 from .domain import input_blob, prefix, requested_profiles
 from .services.runner import run_profile, ValidationError
@@ -20,7 +20,7 @@ def active(store, doc):
     current = store.get(doc["PartitionKey"], doc["id"])
     return (
         current
-        and current["status"] == "running"
+        and current["status"] == Status.RUNNING
         and current.get("run_id") == doc["run_id"]
         and current["expires"] > time.time()
     )
@@ -28,18 +28,18 @@ def active(store, doc):
 
 def process_document(store, settings, owner, doc_id, runner=run_profile):
     doc = store.get(owner, doc_id)
-    if not doc or doc["status"] not in {"queued", "running"}:
+    if not doc or doc["status"] not in PROCESSING:
         return True
     if doc["expires"] <= time.time():
         return True
-    if doc["status"] == "running" and doc.get("lease_until", 0) > time.time():
+    if doc["status"] == Status.RUNNING and doc.get("lease_until", 0) > time.time():
         return False
     if doc["attempts"] >= MAX_ATTEMPTS:
-        doc.update(status="error", error=EXHAUSTED)
+        doc.update(status=Status.ERROR, error=EXHAUSTED)
         store.save(doc)
         return True
     doc.update(
-        status="running",
+        status=Status.RUNNING,
         attempts=doc["attempts"] + 1,
         run_id=uuid.uuid4().hex,
         lease_until=time.time() + settings.lease_seconds,
@@ -68,7 +68,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
                     results.append(
                         {
                             "profile": profile,
-                            "status": "error",
+                            "status": Status.ERROR,
                             "passed": None,
                             "error": str(exc),
                             "issues": [],
@@ -88,9 +88,9 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
             return True
         # Save the original claim ETag: deletion or a newer attempt must win this race.
         status = (
-            "error"
-            if any(r["status"] == "error" for r in results)
-            else ("passed" if report["passed"] else "failed")
+            Status.ERROR
+            if any(r["status"] == Status.ERROR for r in results)
+            else (Status.PASSED if report["passed"] else Status.FAILED)
         )
         doc.update(
             status=status,
@@ -112,7 +112,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         if active(store, doc):
             retry = doc["attempts"] < MAX_ATTEMPTS
             doc.update(
-                status="queued" if retry else "error",
+                status=Status.QUEUED if retry else Status.ERROR,
                 dispatched=0.0,
                 error="Temporary processing failure" if retry else EXHAUSTED,
             )

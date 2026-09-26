@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
+from ..config import PROFILES, Status
 from .report_parser import parse_verapdf_xml
 
 
@@ -25,7 +26,8 @@ def run_profile(path, profile, settings):
         "--maxfailuresdisplayed",
         "-1",
     ]
-    args += ["--flavour", "ua1"] if profile == "pdfua-1" else ["--profile", str(settings.profile_path)]
+    flavour = PROFILES[profile].flavour
+    args += ["--flavour", flavour] if flavour else ["--profile", str(settings.profile_path)]
     args += ["--extract", "page"]
     args += [str(path)]
     start = time.monotonic()
@@ -59,7 +61,7 @@ def run_profile(path, profile, settings):
             raise ValidationError("PDF could not be validated; it may be malformed or encrypted")
         return {
             "profile": profile,
-            "status": "passed" if parsed.passed else "failed",
+            "status": Status.PASSED if parsed.passed else Status.FAILED,
             "passed": parsed.passed,
             "summary": parsed.summary.model_dump(),
             "issues": [i.model_dump() for i in parsed.issues],

@@ -7,9 +7,21 @@ from portal.domain import tombstone
 from portal.maintenance import sweep
 from portal.services.runner import ValidationError
 from portal.worker import process_document
-from conftest import successful_runner
+from conftest import UPLOAD, successful_runner
 
 BASE = "/api/v1"
+
+
+def test_profiles_default_to_wcag_and_accept_aliases(client):
+    def profiles(body):
+        return client.post(BASE + "/documents", json={"name": "a.pdf"} | body)
+
+    assert profiles({}).json()["validation_profiles"] == ["wcag"]
+    assert profiles({"profiles": ["pdfua1"]}).json()["validation_profiles"] == ["pdfua1"]
+    both = profiles({"profiles": ["wcag-2.2", "pdfua1"]}).json()
+    assert both["validation_profiles"] == ["wcag", "pdfua1"]
+    for invalid in (["wcag", "wcag-2.2"], ["pdfua2"], []):
+        assert profiles({"profiles": invalid}).status_code == 422
 
 
 def test_generated_keys_and_duplicate_names(client):
@@ -277,18 +289,14 @@ def test_replay_after_submission_does_not_reopen_upload(client, uploaded):
     doc_id = uploaded["id"]
     assert client.post(f"{BASE}/documents/{doc_id}/submit").status_code == 202
     replay = client.post(
-        BASE + "/documents",
-        json={"name": "example.pdf", "size": 9},
-        headers={"Idempotency-Key": uploaded["idempotency_key"]},
+        BASE + "/documents", json=UPLOAD, headers={"Idempotency-Key": uploaded["idempotency_key"]}
     )
     assert replay.status_code == 201 and replay.json()["id"] == doc_id
     assert replay.json()["status"] == "queued" and "upload_url" not in replay.json()
     client.delete(f"{BASE}/documents/{doc_id}")
     assert (
         client.post(
-            BASE + "/documents",
-            json={"name": "example.pdf", "size": 9},
-            headers={"Idempotency-Key": uploaded["idempotency_key"]},
+            BASE + "/documents", json=UPLOAD, headers={"Idempotency-Key": uploaded["idempotency_key"]}
         ).status_code
         == 409
     )

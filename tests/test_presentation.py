@@ -114,7 +114,8 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
     page = client.get("/api/v1/documents?limit=1").json()
     assert page["total"] == page["matching"] == 2 and len(page["items"]) == 1
     assert page["processed"] == 1 and page["pages"] == 3
-    assert page["ua_passed"] == page["wcag_passed"] == 1 and page["active_ids"] == []
+    assert page["passed_by_profile"] == {"pdfua-1": 1, "wcag-2.2": 1} and page["active_ids"] == []
+    assert page["ua_passed"] == page["wcag_passed"] == 1
     search = client.get("/api/v1/documents?q=%20other").json()
     assert [d["id"] for d in search["items"]] == [pending["id"]]
     assert search["matching"] == 1 and search["total"] == 2 and search["processed"] == 1
