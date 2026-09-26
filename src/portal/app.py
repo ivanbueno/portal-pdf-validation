@@ -63,7 +63,7 @@ def create_app(settings=None, storage=None):
             {
                 "X-Request-ID": request_id,
                 "X-Content-Type-Options": "nosniff",
-                "Referrer-Policy": "no-referrer",
+                "Referrer-Policy": "strict-origin-when-cross-origin",
                 "Cache-Control": "no-store",
             }
         )
