@@ -4,7 +4,6 @@ import time
 import uuid
 from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from typing import Literal
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
 from .config import MAX_FILE
 from .storage import Conflict
@@ -14,13 +13,13 @@ class FileInput(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=240)
     size: int | None = Field(default=None, gt=0, le=MAX_FILE, strict=True)
-    profiles: list[Literal["wcag", "pdfua1"]] = Field(default_factory=lambda: ["wcag"], min_length=1)
+    profiles: list[str] = Field(default_factory=lambda: ["pdfua-1", "wcag-2.2"], min_length=1)
 
     @field_validator("profiles")
     @classmethod
     def validation_profiles(cls, value):
         aliases = {"pdfua1": "pdfua-1", "wcag": "wcag-2.2"}
-        value = [aliases[profile] for profile in value]
+        value = [aliases.get(profile, profile) for profile in value]
         supported = {"pdfua-1", "wcag-2.2"}
         if len(value) != len(set(value)) or not set(value) <= supported:
             raise ValueError("Choose WCAG 2.2, PDF/UA-1, or both")
