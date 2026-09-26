@@ -7,6 +7,7 @@ import uuid
 from azure.core.exceptions import AzureError
 from .cli import run
 from .config import DISCLAIMER, MAX_ATTEMPTS
+from .events import log_event
 from .domain import input_blob, prefix, requested_profiles
 from .services.runner import run_profile, ValidationError
 from .storage import Conflict
@@ -47,7 +48,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         doc = store.save(doc)
     except Conflict:
         return False
-    log.info(json.dumps({"event": "validation_started", "document_id": doc_id, "attempt": doc["attempts"]}))
+    log_event(log, "validation_started", document_id=doc_id, attempt=doc["attempts"])
     run_prefix = prefix(doc) + doc["run_id"] + "/"
     try:
         results, raw_reports = [], {}
@@ -105,7 +106,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
             store.save(doc)
         except Conflict:
             store.purge(run_prefix)
-        log.info(json.dumps({"event": "validation_finished", "document_id": doc_id, "status": status}))
+        log_event(log, "validation_finished", document_id=doc_id, status=status)
         return True
     except (AzureError, OSError):
         if active(store, doc):
@@ -119,7 +120,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
                 store.save(doc)
             except Conflict:
                 pass
-        log.error(json.dumps({"event": "validation_infrastructure_error", "document_id": doc_id}))
+        log_event(log, "validation_infrastructure_error", logging.ERROR, document_id=doc_id)
         return False
 
 
@@ -132,7 +133,7 @@ def once(store, settings):
         payload = json.loads(message.content)
         done = process_document(store, settings, payload["owner"], payload["document_id"])
     except (ValueError, KeyError):
-        log.error(json.dumps({"event": "invalid_queue_message"}))
+        log_event(log, "invalid_queue_message", logging.ERROR)
         done = True
     if done:
         store.queue.delete_message(message)

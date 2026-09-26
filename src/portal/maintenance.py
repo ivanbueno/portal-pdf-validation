@@ -1,8 +1,8 @@
-import json
 import logging
 import time
 from azure.core.exceptions import AzureError
 from .cli import run
+from .events import log_event
 from .domain import dispatch_document, tombstone, prefix
 from .storage import Conflict
 
@@ -30,7 +30,7 @@ def sweep(store, settings):
             pass
         except AzureError:
             failures += 1
-    log.info(json.dumps({"event": "maintenance_finished", "failures": failures}))
+    log_event(log, "maintenance_finished", failures=failures)
     if failures:
         raise RuntimeError("Maintenance incomplete; see failure count")
 

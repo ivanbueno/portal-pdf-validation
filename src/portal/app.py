@@ -33,6 +33,7 @@ from .domain import (
     public,
     tombstone,
 )
+from .events import log_event
 from .storage import Storage, Conflict
 from .services.grouping import group_issues
 from .middleware import MetadataBodyLimit
@@ -82,15 +83,12 @@ def create_app(settings=None, storage=None):
         if key := getattr(request.state, "idempotency_key", None):
             response.headers["Idempotency-Key"] = key
         # No paths, filenames, tokens, query strings, or exception messages in request logs.
-        log.info(
-            json.dumps(
-                {
-                    "event": "request",
-                    "request_id": request_id,
-                    "status": response.status_code,
-                    "duration_ms": int((time.monotonic() - start) * 1000),
-                }
-            )
+        log_event(
+            log,
+            "request",
+            request_id=request_id,
+            status=response.status_code,
+            duration_ms=int((time.monotonic() - start) * 1000),
         )
         return response
 
@@ -100,7 +98,7 @@ def create_app(settings=None, storage=None):
 
     @app.exception_handler(AzureError)
     async def unavailable(request, exc):
-        log.error(json.dumps({"event": "storage_unavailable", "type": type(exc).__name__}))
+        log_event(log, "storage_unavailable", logging.ERROR, type=type(exc).__name__)
         return JSONResponse(
             {"detail": "Storage temporarily unavailable; retry with the same idempotency key"},
             status_code=503,
