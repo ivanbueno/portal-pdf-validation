@@ -1311,6 +1311,16 @@ button {
 .preview-dialog-heading h2 {
   overflow-wrap: anywhere;
 }
+#preview-close {
+  display: grid;
+  place-items: center;
+  flex: 0 0 42px;
+  width: 42px;
+  padding: 0;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  line-height: 1;
+}
 #preview-image {
   display: block;
   width: 100%;

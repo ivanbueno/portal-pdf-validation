@@ -210,7 +210,9 @@
     <dialog id="preview-dialog" aria-labelledby="preview-title">
       <div class="preview-dialog-heading">
         <h2 id="preview-title">PDF page preview</h2>
-        <button id="preview-close" type="button">Close</button>
+        <button id="preview-close" type="button" aria-label="Close preview">
+          <span aria-hidden="true">×</span>
+        </button>
       </div>
       <p id="preview-note" class="muted"></p>
       <img id="preview-image" alt="" />

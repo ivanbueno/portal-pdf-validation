@@ -505,6 +505,14 @@ async function loadOccurrencePreviews(previews, docId, occurrences) {
     if (preview.dataset.previewsLoaded) continue;
     preview.dataset.previewsLoaded = "true";
     const occurrence = occurrences[index];
+    if (
+      !occurrence.page &&
+      /(?:^|\/)metadata\[\d+\]|XMPPackage/i.test(occurrence.location || "")
+    ) {
+      preview.textContent = "Document-level check; no page preview is available.";
+      preview.title = occurrence.location || "Document-level veraPDF location";
+      continue;
+    }
     preview.textContent = "Loading page preview…";
     let key;
     try {
@@ -798,6 +806,18 @@ async function openPreview(docId, occurrence, thumbnail) {
   }
 }
 $("preview-close").onclick = () => $("preview-dialog").close();
+$("preview-dialog").addEventListener("click", (event) => {
+  const dialog = event.currentTarget;
+  const bounds = dialog.getBoundingClientRect();
+  if (
+    event.target === dialog &&
+    (event.clientX < bounds.left ||
+      event.clientX > bounds.right ||
+      event.clientY < bounds.top ||
+      event.clientY > bounds.bottom)
+  )
+    dialog.close();
+});
 document.addEventListener("click", (event) => {
   document.querySelectorAll(".action-dropdown[open]").forEach((menu) => {
     if (!menu.contains(event.target)) menu.open = false;
