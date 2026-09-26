@@ -9,6 +9,7 @@ from .cli import run
 from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status
 from .events import log_event
 from .domain import input_blob, prefix, requested_profiles
+from .services.grouping import group_issues, issue_view
 from .services.runner import ValidationError, profile_error, run_profile
 from .storage import Conflict
 
@@ -100,7 +101,10 @@ def run_profiles(store, settings, doc, runner):
 
 
 def summarize(doc_id, results):
-    """The stored report for one attempt, and the document fields that summarize it."""
+    """The stored report for one attempt, and the document fields that summarize it.
+
+    Reports never change once published, so they carry their issue groups: readers never regroup.
+    """
     passed = all(r["passed"] is True for r in results)
     page_count = next((r["page_count"] for r in results if r.get("page_count") is not None), None)
     if any(r["status"] == Status.ERROR for r in results):
@@ -108,7 +112,12 @@ def summarize(doc_id, results):
     else:
         status = Status.PASSED if passed else Status.FAILED
     report = dict(
-        document_id=doc_id, page_count=page_count, passed=passed, results=results, disclaimer=DISCLAIMER
+        document_id=doc_id,
+        page_count=page_count,
+        passed=passed,
+        results=results,
+        issue_groups=group_issues(results),
+        disclaimer=DISCLAIMER,
     )
     fields = dict(
         status=status,
@@ -124,14 +133,16 @@ def summarize(doc_id, results):
 def publish(store, doc, results, raw_reports):
     """Store the report and point the document at it, unless this attempt was superseded."""
     report, fields = summarize(doc["id"], results)
-    name = run_prefix(doc) + "report.json"
-    store.put(name, json.dumps(report).encode())
+    names = {"report": run_prefix(doc) + "report.json", "issues": run_prefix(doc) + "issues.json"}
+    store.put(names["report"], json.dumps(report).encode())
+    # The portal pages through this small view instead of downloading the full report.
+    store.put(names["issues"], json.dumps(issue_view(report["issue_groups"])).encode())
     if not active(store, doc):
         store.purge(run_prefix(doc))
         return
     # Save against the claim's ETag: deletion or a newer attempt must win this race.
     try:
-        store.save(doc | fields | {"report": name, "raw_reports": json.dumps(raw_reports)})
+        store.save(doc | fields | names | {"raw_reports": json.dumps(raw_reports)})
     except Conflict:
         store.purge(run_prefix(doc))
     log_event(log, "validation_finished", document_id=doc["id"], status=fields["status"])

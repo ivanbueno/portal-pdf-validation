@@ -122,3 +122,30 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
     assert [d["id"] for d in client.get("/api/v1/documents?status=passed").json()["items"]] == [doc_id]
     assert client.get("/api/v1/documents?status=active").json()["matching"] == 1
     assert client.get("/api/v1/documents?status=deleted").status_code == 422
+
+
+def test_issue_views_read_groups_stored_at_publish(client, store, settings, uploaded, monkeypatch):
+    doc_id = uploaded["id"]
+    base = f"/api/v1/documents/{doc_id}"
+    client.post(base + "/submit")
+
+    def runner(path, profile, s):
+        result, xml = successful_runner(path, profile, s)
+        result.update(status="failed", passed=False, issues=[{"rule_id": "ISO:7.2:20", "message": "m"}] * 150)
+        return result, xml
+
+    process_document(store, settings, "local-development", doc_id, runner)
+    real, reads = store.read, []
+    monkeypatch.setattr(store, "read", lambda name: reads.append(name.rsplit("/", 1)[1]) or real(name))
+    groups = client.get(base + "/issues").json()
+    assert reads == ["issues.json"]
+    assert groups["items"][0]["count"] == 300 and len(groups["items"][0]["occurrences"]) == 100
+    report = client.get(base + "/reports/json").json()
+    assert reads[1:] == ["report.json"] and len(report["issue_groups"][0]["occurrences"]) == 300
+    assert "issue_groups" not in client.get(base).json()
+    # Reports published before the worker stored issue groups are grouped on request.
+    row = store.get("local-development", doc_id)
+    del row["issues"]
+    store.save(row)
+    assert client.get(base + "/issues").json() == groups
+    assert client.get(base + "/reports/json").json() == report

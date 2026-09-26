@@ -12,6 +12,10 @@ from azure.storage.queue import QueueClient
 from .config import MAX_FILE
 
 
+# A user delegation key signs every upload grant issued this long after the first one.
+DELEGATION_KEY_REUSE = timedelta(hours=1)
+
+
 class Conflict(Exception):
     pass
 
@@ -46,6 +50,8 @@ class Storage:
             self.queue = QueueClient(f"https://{account}.queue.core.windows.net", settings.queue, credential)
         self.table = self.tables.get_table_client(settings.table)
         self.container = self.blobs.get_container_client(settings.container)
+        # (key, expiry), replaced as one value: request threads share it.
+        self._delegation = None
 
     def initialize(self):
         # Production infrastructure is provisioned by Bicep, not by application requests.
@@ -135,13 +141,20 @@ class Storage:
         if self.settings.storage_connection_string:
             args.update(account_key=self.blobs.credential.account_key, protocol="https,http")
         else:
-            args["user_delegation_key"] = self.blobs.get_user_delegation_key(
-                now - timedelta(minutes=5), expiry
-            )
+            args["user_delegation_key"] = self._delegation_key(now, expiry)
         base = self.blob(name).url
         if self.settings.public_blob_endpoint:
             base = self.settings.public_blob_endpoint.rstrip("/") + urlsplit(base).path
         return base + "?" + generate_blob_sas(**args), expiry.timestamp()
+
+    def _delegation_key(self, now, expiry):
+        """A key valid through `expiry`, reused across grants instead of fetched for each upload."""
+        cached = self._delegation
+        if cached is None or cached[1] < expiry:
+            key_expiry = expiry + DELEGATION_KEY_REUSE
+            cached = (self.blobs.get_user_delegation_key(now - timedelta(minutes=5), key_expiry), key_expiry)
+            self._delegation = cached
+        return cached[0]
 
     def snapshot(self, name, expected_size=None):
         blob = self.blob(name)

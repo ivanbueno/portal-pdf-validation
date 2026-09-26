@@ -1,5 +1,8 @@
 """Consolidate checks without merging clauses from different specifications."""
 
+# Occurrences per group in the portal's issue view; the JSON report keeps every one.
+OCCURRENCE_LIMIT = 100
+
 
 def group_issues(results):
     groups = {}
@@ -42,3 +45,8 @@ def group_issues(results):
                 }
             )
     return list(groups.values())
+
+
+def issue_view(groups):
+    """The groups as the portal pages through them: each keeps only its first occurrences."""
+    return [group | {"occurrences": group["occurrences"][:OCCURRENCE_LIMIT]} for group in groups]

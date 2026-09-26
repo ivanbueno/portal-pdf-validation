@@ -253,7 +253,7 @@ def test_summarize_overall_status_and_fields(statuses, overall):
             "profile": profile,
             "status": status,
             "passed": status == "passed",
-            "issues": [{}],
+            "issues": [{"rule_id": "ISO:7.2:20", "message": "m"}],
             "page_count": pages,
         }
         for profile, status, pages in zip(("pdfua-1", "wcag-2.2"), statuses, (None, 4))
@@ -261,6 +261,7 @@ def test_summarize_overall_status_and_fields(statuses, overall):
     report, fields = summarize("doc", results)
     assert fields["status"] == overall and report["passed"] == fields["passed"] == (overall == "passed")
     assert report["page_count"] == fields["page_count"] == 4 and report["results"] is results
+    assert [group["counts"] for group in report["issue_groups"]] == [{"pdfua-1": 1, "wcag-2.2": 1}]
     summaries = json.loads(fields["profile_summaries"])
     assert [set(summary) for summary in summaries] == [{"profile", "status", "passed"}] * 2
 

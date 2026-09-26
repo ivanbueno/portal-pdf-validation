@@ -36,7 +36,7 @@ from .domain import (
 )
 from .events import log_event
 from .storage import Storage, Conflict
-from .services.grouping import group_issues
+from .services.grouping import group_issues, issue_view
 from .middleware import MetadataBodyLimit
 from .models.api import DocumentView, DocumentPage, DocumentDetail, StatusFilter, UploadGrant
 
@@ -228,11 +228,17 @@ def create_app(settings=None, storage=None):
         doc_id: str, principal: Owner, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)
     ):
         doc = get_owned(storage, principal, doc_id, "document")
-        groups = group_issues(report(doc)["results"])
-        items = []
-        for group in groups[offset : offset + limit]:
-            items.append(group | {"occurrences": group["occurrences"][:100]})
-        return {"items": items, "total": len(groups), "offset": offset, "limit": limit}
+        if doc.get("issues"):
+            groups = json.loads(storage.read(doc["issues"]))
+        else:
+            # Unfinished documents, and reports published before the worker stored issue groups.
+            groups = issue_view(group_issues(report(doc)["results"]))
+        return {
+            "items": groups[offset : offset + limit],
+            "total": len(groups),
+            "offset": offset,
+            "limit": limit,
+        }
 
     @app.get("/api/v1/documents/{doc_id}/reports/{format}")
     def download_report(doc_id: str, format: str, principal: Owner, profile: str | None = None):
@@ -240,9 +246,14 @@ def create_app(settings=None, storage=None):
         if not doc.get("report"):
             raise HTTPException(409, "Report not available yet")
         if format == "json":
-            saved = report(doc)
+            if doc.get("issues"):
+                # Stored with its issue groups, so it is served as published.
+                body = storage.read(doc["report"])
+            else:
+                saved = report(doc)
+                body = json.dumps(saved | {"issue_groups": group_issues(saved["results"])})
             return Response(
-                json.dumps(saved | {"issue_groups": group_issues(saved["results"])}),
+                body,
                 media_type="application/json",
                 headers={"Content-Disposition": f'attachment; filename="{doc_id}.json"'},
             )
