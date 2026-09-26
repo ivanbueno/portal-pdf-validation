@@ -1,4 +1,5 @@
 from portal.auth import owner
+from portal.models.report import Issue
 from portal.services.grouping import group_issues
 from portal.services.report_parser import parse_verapdf_xml
 from portal.worker import process_document
@@ -18,7 +19,7 @@ def test_group_by_specification_clause_test_preserves_profiles_and_locations():
         {
             "profile": "wcag-2.2",
             "issues": [
-                common | {"message": "third"},
+                common | {"message": "third", "severity": "major", "categories": ["structure", "table"]},
                 common | {"specification": "Other", "message": "distinct"},
             ],
         },
@@ -28,6 +29,8 @@ def test_group_by_specification_clause_test_preserves_profiles_and_locations():
     assert groups[0]["count"] == 3 and groups[0]["message"] == "Rule description"
     assert groups[0]["counts"] == {"pdfua-1": 2, "wcag-2.2": 1}
     assert groups[0]["occurrences"][1]["location"] == "page 2"
+    assert groups[0]["severity"] == "major" and groups[0]["categories"] == ["structure", "table"]
+    assert groups[1]["severity"] is None and groups[1]["categories"] == []
 
 
 def test_pdf_view_is_private_immutable_and_revoked(client, store, uploaded):
@@ -71,6 +74,23 @@ def test_page_count_and_explicit_rule_metadata():
     assert parsed.issues[0].clause == "7.2" and parsed.issues[0].test_number == "20"
     assert parsed.issues[0].description == "Description"
     assert parse_verapdf_xml('<validationReport isCompliant="true"/>', 1).page_count is None
+
+
+def test_severity_and_categories_come_from_profile_tags():
+    rule = '<rule clause="7.1" testNumber="{n}" status="failed" tags="{tags}"><description>D</description></rule>'
+    rules = [
+        rule.format(n=1, tags="major,machine, structure"),
+        rule.format(n=2, tags="metadata"),
+        rule.format(n=3, tags=""),
+    ]
+    parsed = parse_verapdf_xml(f"<validationReport>{''.join(rules)}</validationReport>", 1)
+    assert [(i.severity, i.categories) for i in parsed.issues] == [
+        ("major", ["machine", "structure"]),
+        (None, ["metadata"]),
+        (None, []),
+    ]
+    # Reports stored before tags were read carry "error", which no profile tags.
+    assert Issue(message="m", severity="error").severity is None
 
 
 def test_list_filters_server_side_and_reports_workspace_totals(client, store, settings, submitted):

@@ -18,6 +18,7 @@
   --soft: light-dark(#edf3fc, #22354f);
   --good: light-dark(#216d45, #81d5a1);
   --bad: light-dark(#a4303e, #ffadb5);
+  --warn: light-dark(#8a5300, #f5c46b);
   --shadow: 0 3px 20px #1b345908;
   /* The brand blue is the same in both themes, unlike --accent. */
   --brand: #245dab;
@@ -1172,6 +1173,56 @@ dialog::backdrop {
 .profile-badge {
   color: var(--muted);
   font-size: 0.75rem;
+}
+.issue-badges {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-left: auto;
+}
+.issue-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 999px;
+  padding: 2px 9px;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+/* Categories are quiet tags: outlined, neutral, lowercase. */
+.category-badge {
+  border: 1px solid var(--line);
+  color: var(--muted);
+}
+.category-badge::before {
+  content: "#";
+  opacity: 0.6;
+}
+/* Severity is the one filled, ranked status in the row, so it reads in grayscale too. */
+.severity-badge {
+  --badge: var(--muted);
+  margin-left: 6px;
+  border: 1px solid var(--badge);
+  background: var(--badge);
+  color: var(--panel);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.severity-badge::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.severity-critical {
+  --badge: var(--bad);
+}
+.severity-major {
+  --badge: var(--warn);
 }
 .issue-description {
   line-height: 1.6;

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import re
 from defusedxml import ElementTree as ET
 
-from ..models.report import Issue, ValidationSummary
+from ..models.report import SEVERITIES, Issue, ValidationSummary
 
 _PAGE_PATTERN = re.compile(r"\bpage\s*(\d+)\b", re.IGNORECASE)
 _VERAPDF_PAGE_PATTERN = re.compile(r"(?:^|/)pages\[(\d+)(?:-\d+)?\]")
@@ -95,6 +95,7 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
             clause=rule.attrib.get("clause"),
             test_number=rule.attrib.get("testNumber"),
             description=_child_text(rule, "description"),
+            **_rule_tags(rule),
         )
         rule_location = _child_text(rule, "object")
         fallback_message = rule_fields["description"] or _child_text(rule, "test") or "veraPDF rule failed"
@@ -127,14 +128,16 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
 
 def _issue(rule_fields: dict, message: str, location: str | None) -> Issue:
     page = _extract_page(" ".join(filter(None, [location, message])))
-    category = _infer_category(" ".join(filter(None, [message, rule_fields["rule_id"], location])))
-    return Issue(
-        severity="error",
-        **rule_fields,
-        message=message.strip(),
-        page=page,
-        location=location,
-        category=category,
+    return Issue(**rule_fields, message=message.strip(), page=page, location=location)
+
+
+def _rule_tags(rule: ET.Element) -> dict:
+    """Severity and categories from the `tags` the validation profile puts on the rule."""
+    tags = [tag.strip() for tag in (rule.attrib.get("tags") or "").split(",") if tag.strip()]
+    severities = [tag for tag in tags if tag in SEVERITIES]
+    return dict(
+        severity=max(severities, key=SEVERITIES.index) if severities else None,
+        categories=[tag for tag in tags if tag not in SEVERITIES],
     )
 
 
@@ -152,17 +155,6 @@ def _build_rule_id(rule: ET.Element) -> str | None:
     if not compact:
         return None
     return ":".join(compact)
-
-
-def _infer_category(text: str) -> str | None:
-    lower = text.lower()
-    if any(token in lower for token in ("tag", "structure", "rolemap", "artifact", "marked")):
-        return "structure"
-    if any(token in lower for token in ("lang", "metadata", "title")):
-        return "metadata"
-    if any(token in lower for token in ("font", "unicode", "encoding", "glyph")):
-        return "font"
-    return None
 
 
 def _extract_page(text: str) -> int | None:

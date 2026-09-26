@@ -2,9 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
+
+# Severity tags a validation profile can put on a rule, least severe first.
+SEVERITIES = ("minor", "major", "critical")
+
+# Reports stored before severities came from profile tags hold "error"; they read as untagged.
+Severity = Annotated[
+    Literal[SEVERITIES] | None,
+    BeforeValidator(lambda value: value if value in SEVERITIES else None),
+]
 
 
 class ValidationSummary(BaseModel):
@@ -15,7 +24,7 @@ class ValidationSummary(BaseModel):
 
 
 class Issue(BaseModel):
-    severity: Literal["error", "warning", "info"] = "error"
+    severity: Severity = None
     rule_id: str | None = None
     specification: str | None = None
     clause: str | None = None
@@ -24,4 +33,5 @@ class Issue(BaseModel):
     message: str
     page: int | None = Field(default=None, ge=1)
     location: str | None = None
-    category: str | None = None
+    # The rule's profile tags other than its severity.
+    categories: list[str] = Field(default_factory=list)

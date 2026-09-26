@@ -123,6 +123,13 @@ function renderOccurrences(group, docId) {
   return occurrences;
 }
 
+// Screen readers hear "Severity: major", not a bare word among the tags.
+function tagBadge(kind, value, className) {
+  const badge = node("span", undefined, `issue-badge ${className}`);
+  badge.append(node("span", `${kind}: `, "sr-only"), value);
+  return badge;
+}
+
 function renderIssueGroup(group, docId) {
   const issue = node("article", undefined, "grouped-issue");
   const identity = node("div", undefined, "issue-identity");
@@ -136,6 +143,20 @@ function renderIssueGroup(group, docId) {
   );
   for (const profile of group.profiles)
     identity.append(node("span", profileLabel(profile), "profile-badge"));
+  // Severity and categories are the rule's tags in its validation profile.
+  // Severity comes last so it keeps the same spot however many categories precede it.
+  const badges = node("span", undefined, "issue-badges");
+  for (const category of group.categories || [])
+    badges.append(tagBadge("Category", category, "category-badge"));
+  if (group.severity)
+    badges.append(
+      tagBadge(
+        "Severity",
+        group.severity,
+        `severity-badge severity-${group.severity}`,
+      ),
+    );
+  if (badges.childElementCount) identity.append(badges);
   const body = node("div");
   body.append(node("p", group.message, "issue-description"));
   if (group.specification) body.append(node("p", group.specification, "muted"));

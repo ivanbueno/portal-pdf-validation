@@ -3,7 +3,7 @@
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from ..config import ACTIVE, DEFAULT_PROFILES, MAX_FILE, PROFILES, PROFILE_ALIASES, TERMINAL
-from .report import Issue, ValidationSummary
+from .report import Issue, Severity, ValidationSummary
 
 
 def _literal(values):
@@ -105,6 +105,8 @@ class IssueGroup(BaseModel):
     clause: str | None = None
     test_number: str | None = None
     rule_id: str | None = None
+    severity: Severity = None
+    categories: list[str] = Field(default_factory=list)
     message: str
     profiles: list[ProfileId]
     counts: dict[ProfileId, int]

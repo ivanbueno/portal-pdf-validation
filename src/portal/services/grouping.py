@@ -1,5 +1,7 @@
 """Consolidate checks without merging clauses from different specifications."""
 
+from ..models.report import SEVERITIES
+
 # Occurrences per group in the portal's issue view; the JSON report keeps every one.
 OCCURRENCE_LIMIT = 100
 
@@ -20,6 +22,8 @@ def group_issues(results):
                     clause=clause,
                     test_number=test,
                     rule_id=issue.get("rule_id"),
+                    severity=None,
+                    categories=[],
                     message=issue.get("description") or issue["message"],
                     profiles=[],
                     counts={},
@@ -27,6 +31,15 @@ def group_issues(results):
                     count=0,
                 )
             group = groups[key]
+            # Profiles can tag the same check differently: keep the worst severity and every category.
+            severity = issue.get("severity")
+            if severity in SEVERITIES and (
+                group["severity"] is None or SEVERITIES.index(severity) > SEVERITIES.index(group["severity"])
+            ):
+                group["severity"] = severity
+            for category in issue.get("categories") or []:
+                if category not in group["categories"]:
+                    group["categories"].append(category)
             profile = result["profile"]
             if profile not in group["profiles"]:
                 group["profiles"].append(profile)
