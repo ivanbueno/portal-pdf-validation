@@ -84,6 +84,7 @@ Submission is idempotent by document ID; no additional key is needed. Missing/in
 | `GET /documents/{id}/reports/json` | Complete normalized results and consolidated `issue_groups`, including every occurrence. |
 | `GET /documents/{id}/reports/xml?profile=…` | Original XML for `pdfua-1` or `wcag-2.2`; 404 if that profile could not produce XML. |
 | `DELETE /documents/{id}` | 204; immediate access revocation and asynchronous physical cleanup. |
+| `DELETE /documents` | Deletes every document the caller owns, including unfinished ones, as `DELETE /documents/{id}` would; returns `{"deleted": count}`. A 409 means a document changed meanwhile: retry, and already deleted documents are skipped. |
 
 Document states: `uploading`, `queued`, `running`, `passed`, `failed`, `error`. A completed nonconforming file is `failed`, not an HTTP or infrastructure error. On engine failure, profile `passed` is null and `status` is `error`; the document's overall `passed` is false. Rule locations come from veraPDF; page is null when the engine does not supply an unambiguous page number.
 

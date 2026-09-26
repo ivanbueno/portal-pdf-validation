@@ -10,6 +10,7 @@ from portal.config import MAX_FILE, MAX_FILES
 from portal.domain import tombstone
 from portal.maintenance import sweep
 from portal.services.runner import ValidationError
+from portal.storage import Conflict
 from portal.worker import process_document, summarize
 from conftest import ISSUE, OWNER, UPLOAD, put_input, raising, successful_runner
 
@@ -217,6 +218,40 @@ def test_document_tombstone_revokes_access_before_sweep(client, store, settings,
     assert client.get(f"{BASE}/documents/{uploaded['id']}").status_code == 404
     sweep(store, settings)
     assert not store.objects
+
+
+def test_delete_all_documents_is_scoped_to_the_owner(client, store, settings, submitted):
+    client.post(BASE + "/documents", json={"name": "still-uploading.pdf", "size": 9})
+    client.app.dependency_overrides[owner] = lambda: "other-user"
+    other = client.post(BASE + "/documents", json={"name": "other.pdf", "size": 9}).json()
+    client.app.dependency_overrides.clear()
+    assert client.delete(BASE + "/documents").json() == {"deleted": 2}
+    assert client.get(BASE + "/documents").json()["total"] == 0
+    assert client.delete(BASE + "/documents").json() == {"deleted": 0}
+    # The worker drops the queued document's message; maintenance purges its files.
+    assert process_document(store, settings, OWNER, submitted, successful_runner)
+    assert store.get(OWNER, submitted)["status"] == "deleted"
+    sweep(store, settings)
+    assert not store.objects
+    client.app.dependency_overrides[owner] = lambda: "other-user"
+    assert client.get(f"{BASE}/documents/{other['id']}").status_code == 200
+
+
+def test_delete_all_retries_a_row_changed_meanwhile(client, store, submitted, monkeypatch):
+    real_rows = store.rows
+
+    def rows(*args, **kwargs):
+        listed = real_rows(*args, **kwargs)
+        store.save(store.get(OWNER, submitted))  # A worker saved it after it was listed.
+        return listed
+
+    monkeypatch.setattr(store, "rows", rows)
+    assert client.delete(BASE + "/documents").json() == {"deleted": 1}
+    assert store.get(OWNER, submitted)["status"] == "deleted"
+    monkeypatch.setattr(store, "rows", real_rows)
+    client.post(BASE + "/documents", json={"name": "b.pdf", "size": 9})
+    monkeypatch.setattr(store, "save", raising(Conflict()))
+    assert client.delete(BASE + "/documents").status_code == 409
 
 
 def test_three_transient_attempts(store, settings, submitted, monkeypatch):

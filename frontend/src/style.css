@@ -498,8 +498,18 @@ h3 {
   background: var(--panel);
   box-shadow: var(--shadow);
 }
-#load-more {
+/* Below the table: load more on the left, delete all on the right. */
+.table-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.table-actions > button {
   margin-top: 16px;
+}
+#delete-all {
+  margin-left: auto;
 }
 .count {
   font-size: 0.875rem;

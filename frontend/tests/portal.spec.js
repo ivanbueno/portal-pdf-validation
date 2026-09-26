@@ -348,3 +348,66 @@ test("one invalid upload does not block other documents or duplicate retries", a
   await expect(page.locator("#results-body")).not.toContainText("invalid.pdf");
   await expect(page.locator("#results-body")).toContainText("independent.pdf");
 });
+
+test("delete all documents asks for confirmation first", async ({ page }) => {
+  // Mocked so running the suite never empties a real workspace.
+  let total = 3,
+    deletes = 0;
+  await page.route("**/api/v1/documents?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        total,
+        matching: total ? 25 : 0,
+        processed: total,
+        passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
+        pages: 0,
+        active_ids: [],
+      },
+    }),
+  );
+  await page.route("**/api/v1/documents", (route) => {
+    if (route.request().method() !== "DELETE") return route.fallback();
+    deletes++;
+    total = 0;
+    return route.fulfill({ json: { deleted: 3 } });
+  });
+  await page.goto("/");
+  const deleteAll = page.getByRole("button", { name: "Delete all documents" });
+  const loadMore = page.getByRole("button", { name: "Load older files" });
+  await expect(deleteAll).toBeVisible();
+  await expect(loadMore).toBeVisible();
+  // One line: load more on the left, delete all against the right edge.
+  const [loadBox, deleteBox, rowBox] = await Promise.all([
+    loadMore.boundingBox(),
+    deleteAll.boundingBox(),
+    page.locator(".table-actions").boundingBox(),
+  ]);
+  expect(Math.abs(loadBox.y - deleteBox.y)).toBeLessThan(2);
+  expect(deleteBox.x).toBeGreaterThan(loadBox.x);
+  expect(
+    Math.abs(deleteBox.x + deleteBox.width - (rowBox.x + rowBox.width)),
+  ).toBeLessThan(2);
+
+  await deleteAll.click();
+  const dialog = page.locator("#confirm");
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator("h2")).toHaveText("Delete all documents?");
+  await expect(dialog).toContainText("permanently removes 3 files");
+  await expect(page.locator("#confirm-cancel")).toBeFocused();
+  const a11y = await new AxeBuilder({ page })
+    .include("#confirm")
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
+    .analyze();
+  expect(a11y.violations).toEqual([]);
+  await page.getByRole("button", { name: "Keep files" }).click();
+  await expect(dialog).not.toBeVisible();
+  expect(deletes).toBe(0);
+
+  await deleteAll.click();
+  await dialog.getByRole("button", { name: "Delete all documents" }).click();
+  await expect(dialog).not.toBeVisible();
+  await expect(page.locator("#notice")).toContainText("3 files deleted.");
+  await expect(deleteAll).toBeHidden();
+  expect(deletes).toBe(1);
+});

@@ -22,6 +22,7 @@ from .config import (
     Status,
 )
 from .domain import (
+    delete_all,
     reserve,
     submit,
     get_owned,
@@ -37,7 +38,15 @@ from .events import configure_logging, log_event
 from .storage import Storage, Conflict
 from .services.grouping import group_issues, issue_view
 from .middleware import MetadataBodyLimit
-from .models.api import DocumentView, DocumentPage, DocumentDetail, FileInput, StatusFilter, UploadGrant
+from .models.api import (
+    DeletedDocuments,
+    DocumentDetail,
+    DocumentPage,
+    DocumentView,
+    FileInput,
+    StatusFilter,
+    UploadGrant,
+)
 
 log = logging.getLogger("portal")
 
@@ -289,6 +298,10 @@ def create_app(settings=None, storage=None):
     def delete_document(doc: Document):
         tombstone(storage, doc, settings)
         return Response(status_code=204)
+
+    @app.delete("/api/v1/documents", response_model=DeletedDocuments)
+    def delete_all_documents(principal: Owner):
+        return {"deleted": delete_all(storage, settings, principal)}
 
     if (settings.dist / "assets").exists():
         app.mount("/assets", StaticFiles(directory=settings.dist / "assets"), name="assets")

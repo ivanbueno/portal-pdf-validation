@@ -93,6 +93,10 @@ class DocumentDetail(DocumentView):
     limit: int
 
 
+class DeletedDocuments(BaseModel):
+    deleted: int
+
+
 class UploadGrant(BaseModel):
     upload_url: str
     upload_expires: float

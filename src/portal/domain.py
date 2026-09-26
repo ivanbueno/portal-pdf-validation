@@ -43,13 +43,16 @@ def is_live(row, now=None):
 LISTED = sorted(PUBLIC | {"kind", "requested_profiles", "profile_summaries", "snapshot"})
 
 
-def live_documents(store, owner, now):
-    """The owner's live documents: filtered by Table Storage, then re-checked here."""
+def live_documents(store, owner, now, select=LISTED):
+    """The owner's live documents: filtered by Table Storage, then re-checked here.
+
+    Rows read with the default `select` are partial and cannot be saved; pass None for full rows.
+    """
     rows = store.rows(
         owner,
         where=f"kind eq 'document' and status ne '{Status.DELETED}' and expires gt @now",
         parameters={"now": now},
-        select=LISTED,
+        select=select,
     )
     return [row for row in rows if row.get("kind") == "document" and is_live(row, now)]
 
@@ -167,6 +170,28 @@ def tombstone(store, row, settings):
     # Keep tombstones beyond all previously issued upload URLs and worker leases.
     row["purge_after"] = time.time() + max(settings.upload_ttl, settings.lease_seconds) + 60
     return store.save(row)
+
+
+def delete_all(store, settings, owner):
+    """Tombstone every live document of the owner, as a single delete would; returns the count.
+
+    A row changed meanwhile (say, by a worker publishing) is re-read and retried. One that keeps
+    changing raises Conflict, and the caller's retry skips documents already deleted.
+    """
+    deleted = 0
+    for row in live_documents(store, owner, time.time(), select=None):
+        for _ in range(3):
+            try:
+                tombstone(store, row, settings)
+                deleted += 1
+                break
+            except Conflict:
+                row = store.get(owner, row["id"])
+                if not row or not is_live(row):
+                    break  # Deleted or expired meanwhile.
+        else:
+            raise Conflict()
+    return deleted
 
 
 def document_view(store, doc, uploads=False):

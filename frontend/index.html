@@ -149,7 +149,12 @@
               <tbody id="results-body"></tbody>
             </table>
           </div>
-          <button id="load-more" hidden>Load older files</button>
+          <div class="table-actions">
+            <button id="load-more" hidden>Load older files</button>
+            <button id="delete-all" class="danger" hidden>
+              Delete all documents
+            </button>
+          </div>
         </div>
       </section>
       <footer>
@@ -158,14 +163,11 @@
       </footer>
     </main>
     <dialog id="confirm" aria-labelledby="confirm-title">
-      <h2 id="confirm-title">Delete this file?</h2>
-      <p>
-        Access is removed immediately. The document and its reports will be
-        permanently removed.
-      </p>
+      <h2 id="confirm-title">Delete?</h2>
+      <p id="confirm-message"></p>
       <div class="submit-row">
-        <button id="confirm-cancel">Keep file</button
-        ><button class="danger" id="confirm-delete">Delete file</button>
+        <button id="confirm-cancel">Cancel</button
+        ><button class="danger" id="confirm-delete">Delete</button>
       </div>
     </dialog>
     <dialog id="preview-dialog" aria-labelledby="preview-title">

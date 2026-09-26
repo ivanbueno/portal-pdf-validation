@@ -274,6 +274,7 @@ export async function refresh() {
   documents = collected;
   stats = data;
   $("load-more").hidden = data.matching <= documentLimit;
+  $("delete-all").hidden = !data.total;
   renderResults();
 }
 
@@ -313,21 +314,61 @@ async function toggleDetail(doc, forceOpen = false) {
   }
 }
 
-function confirmDelete(doc) {
-  $("confirm-title").textContent = `Delete “${doc.name}”?`;
+const files = (count) => `${count} ${count === 1 ? "file" : "files"}`;
+
+// The shared confirmation dialog, set up for one removal. `onConfirm` runs when
+// confirmed; on failure the dialog stays open and the error is shown.
+function confirmRemoval({ title, message, keep, remove, onConfirm }) {
+  $("confirm-title").textContent = title;
+  $("confirm-message").textContent = message;
+  $("confirm-cancel").textContent = keep;
+  const button = $("confirm-delete");
+  button.textContent = remove;
   $("confirm").showModal();
-  $("confirm-delete").onclick = async () => {
+  button.onclick = async () => {
+    // One request per confirmation, however many clicks.
+    button.disabled = true;
     try {
-      await api(`/documents/${doc.id}`, { method: "DELETE" });
+      await onConfirm();
       $("confirm").close();
-      expanded.delete(doc.id);
-      detailRows.delete(doc.id);
-      notify("File deleted.");
       await refresh();
     } catch (e) {
       showError(e);
+    } finally {
+      button.disabled = false;
     }
   };
+}
+
+function confirmDelete(doc) {
+  confirmRemoval({
+    title: `Delete “${doc.name}”?`,
+    message:
+      "Access is removed immediately. The document and its reports will be permanently removed.",
+    keep: "Keep file",
+    remove: "Delete file",
+    onConfirm: async () => {
+      await api(`/documents/${doc.id}`, { method: "DELETE" });
+      expanded.delete(doc.id);
+      detailRows.delete(doc.id);
+      notify("File deleted.");
+    },
+  });
+}
+
+function confirmDeleteAll() {
+  confirmRemoval({
+    title: "Delete all documents?",
+    message: `This permanently removes ${files(stats.total)} and all reports from your workspace, including files still being validated. Access is removed immediately and this can't be undone.`,
+    keep: "Keep files",
+    remove: "Delete all documents",
+    onConfirm: async () => {
+      const { deleted } = await api("/documents", { method: "DELETE" });
+      expanded.clear();
+      detailRows.clear();
+      notify(`${files(deleted)} deleted.`);
+    },
+  });
 }
 
 const closeMenus = (handle) =>
@@ -351,6 +392,7 @@ export function initResults() {
     refresh().catch(showError);
   };
   $("confirm-cancel").onclick = () => $("confirm").close();
+  $("delete-all").onclick = confirmDeleteAll;
   document.addEventListener("click", (event) =>
     closeMenus((menu) => {
       if (!menu.contains(event.target)) menu.open = false;
