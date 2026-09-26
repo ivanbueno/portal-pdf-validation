@@ -2,7 +2,7 @@ from portal.auth import owner
 from portal.services.grouping import group_issues
 from portal.services.report_parser import parse_verapdf_xml
 from portal.worker import process_document
-from conftest import ISSUE, OWNER, put_input, successful_runner
+from conftest import ISSUE, OWNER, failing_runner, put_input, runner_with
 
 
 def test_group_by_specification_clause_test_preserves_profiles_and_locations():
@@ -51,19 +51,8 @@ def test_pdf_view_is_private_immutable_and_revoked(client, store, uploaded):
 
 def test_metadata_and_grouping_before_pagination(client, store, settings, submitted):
     doc_id = submitted
-
-    def runner(path, profile, s):
-        result, xml = successful_runner(path, profile, s)
-        result.update(
-            page_count=7,
-            status="failed",
-            passed=False,
-            issues=[ISSUE | {"message": str(i), "location": f"page {i + 1}"} for i in range(201)],
-        )
-        result["summary"].update(errors=201, failed_rules=1)
-        return result, xml
-
-    process_document(store, settings, OWNER, doc_id, runner)
+    issues = [ISSUE | {"message": str(i), "location": f"page {i + 1}"} for i in range(201)]
+    process_document(store, settings, OWNER, doc_id, failing_runner(issues, page_count=7))
     item = client.get("/api/v1/documents").json()["items"][0]
     assert item["page_count"] == 7 and item["pdf_available"]
     assert len(item["profiles"]) == 2 and item["profiles"][0]["summary"]["errors"] == 201
@@ -89,12 +78,7 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
     pending = client.post("/api/v1/documents", json={"name": "Other.pdf", "size": 9}).json()
     queued = client.get("/api/v1/documents").json()
     assert queued["active_ids"] == [doc_id]
-
-    def runner(path, profile, s):
-        result, xml = successful_runner(path, profile, s)
-        return result | {"page_count": 3}, xml
-
-    process_document(store, settings, OWNER, doc_id, runner)
+    process_document(store, settings, OWNER, doc_id, runner_with(page_count=3))
     page = client.get("/api/v1/documents?limit=1").json()
     assert page["total"] == page["matching"] == 2 and len(page["items"]) == 1
     assert page["processed"] == 1 and page["pages"] == 3
@@ -111,13 +95,7 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
 def test_issue_views_read_groups_stored_at_publish(client, store, settings, submitted, monkeypatch):
     base = f"/api/v1/documents/{submitted}"
     assert client.get(base + "/issues").json() == {"items": [], "total": 0, "offset": 0, "limit": 100}
-
-    def runner(path, profile, s):
-        result, xml = successful_runner(path, profile, s)
-        result.update(status="failed", passed=False, issues=[ISSUE] * 150)
-        return result, xml
-
-    process_document(store, settings, OWNER, submitted, runner)
+    process_document(store, settings, OWNER, submitted, failing_runner([ISSUE] * 150))
     real, reads = store.read, []
     monkeypatch.setattr(store, "read", lambda name: reads.append(name.rsplit("/", 1)[1]) or real(name))
     groups = client.get(base + "/issues").json()

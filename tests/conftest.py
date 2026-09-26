@@ -153,3 +153,19 @@ def successful_runner(path, profile, settings):
         "summary": {"errors": 0, "failed_rules": 0, "checked_rules": 2, "duration_ms": 1},
         "issues": [],
     }, b'<validationReport isCompliant="true"/>'
+
+
+def runner_with(**fields):
+    """`successful_runner` with some fields of every profile's result replaced."""
+
+    def runner(path, profile, settings):
+        result, raw = successful_runner(path, profile, settings)
+        return result | fields, raw
+
+    return runner
+
+
+def failing_runner(issues, **fields):
+    """A runner under which every profile fails with `issues`, one failed rule."""
+    summary = {"errors": len(issues), "failed_rules": 1, "checked_rules": 2, "duration_ms": 1}
+    return runner_with(status="failed", passed=False, issues=issues, summary=summary, **fields)

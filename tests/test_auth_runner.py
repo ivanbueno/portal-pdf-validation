@@ -72,14 +72,20 @@ def test_process_limits(settings, tmp_path, mode):
     assert time.monotonic() - start < 4
 
 
-@pytest.mark.verapdf
-@pytest.mark.parametrize("filename,ua,wcag", [("ua-pass.pdf", True, True), ("ua-fail.pdf", False, True)])
-def test_real_profiles(filename, ua, wcag):
+@pytest.fixture
+def engine():
+    """Settings for the installed veraPDF engine; skips the test without one."""
     settings = Settings()
     if not settings.verapdf_jar.exists():
         pytest.skip("Set PDF_VERAPDF_JAR to run real engine acceptance tests")
+    return settings
+
+
+@pytest.mark.verapdf
+@pytest.mark.parametrize("filename,ua,wcag", [("ua-pass.pdf", True, True), ("ua-fail.pdf", False, True)])
+def test_real_profiles(engine, filename, ua, wcag):
     for profile, expected in [("pdfua-1", ua), ("wcag-2.2", wcag)]:
-        result, raw = run_profile(Path("tests/fixtures") / filename, profile, settings)
+        result, raw = run_profile(Path("tests/fixtures") / filename, profile, engine)
         assert result["passed"] is expected
         assert parse_verapdf_xml(raw.decode(), 0).passed is expected
         if not expected:
@@ -87,20 +93,14 @@ def test_real_profiles(filename, ua, wcag):
 
 
 @pytest.mark.verapdf
-def test_malformed_pdf(tmp_path):
-    settings = Settings()
-    if not settings.verapdf_jar.exists():
-        pytest.skip("Set PDF_VERAPDF_JAR")
+def test_malformed_pdf(engine, tmp_path):
     path = tmp_path / "broken.pdf"
     path.write_bytes(b"%PDF-1.7\nbroken")
     with pytest.raises(ValidationError, match="malformed or encrypted"):
-        run_profile(path, "pdfua-1", settings)
+        run_profile(path, "pdfua-1", engine)
 
 
 @pytest.mark.verapdf
-def test_encrypted_pdf():
-    settings = Settings()
-    if not settings.verapdf_jar.exists():
-        pytest.skip("Set PDF_VERAPDF_JAR")
+def test_encrypted_pdf(engine):
     with pytest.raises(ValidationError, match="malformed or encrypted"):
-        run_profile(Path("tests/fixtures/encrypted.pdf"), "pdfua-1", settings)
+        run_profile(Path("tests/fixtures/encrypted.pdf"), "pdfua-1", engine)

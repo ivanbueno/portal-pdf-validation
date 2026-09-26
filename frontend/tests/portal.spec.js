@@ -526,3 +526,120 @@ test("delete all documents asks for confirmation first", async ({ page }) => {
   await expect(deleteAll).toBeHidden();
   expect(deletes).toBe(1);
 });
+
+test("the workspace and sign-in page start when site storage is blocked", async ({
+  page,
+}) => {
+  // Browsers that block site data throw on any localStorage access.
+  await page.addInitScript(() =>
+    Object.defineProperty(window, "localStorage", {
+      get() {
+        throw new DOMException("Site data is blocked", "SecurityError");
+      },
+    }),
+  );
+  const errors = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.goto("/");
+  await expect(page.getByText("Local workspace")).toBeVisible();
+  await page.locator("#theme").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  // The choice is not remembered, so the sign-in page starts from the system theme.
+  await page.goto("/login");
+  await expect(page.locator("#theme")).toHaveText("Theme: system");
+  await page.locator("#theme").click();
+  await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
+  expect(errors).toEqual([]);
+});
+
+test("a document reserved without its size says so", async ({ page }) => {
+  const now = Date.now() / 1000;
+  await page.route("**/api/v1/documents?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "unsized",
+            name: "api-client.pdf",
+            status: "uploading",
+            created: now,
+            expires: now + 3600,
+            validation_profiles: ["wcag"],
+            profiles: [],
+            pdf_available: false,
+            attempts: 0,
+          },
+        ],
+        total: 1,
+        matching: 1,
+        processed: 0,
+        passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
+        pages: 0,
+        active_ids: [],
+      },
+    }),
+  );
+  await page.goto("/");
+  const row = page.locator("#results-body .document-row");
+  await expect(row).toContainText("Page count unavailable · Size unavailable");
+  await expect(row).not.toContainText("NaN");
+});
+
+test("the last row's action menu is not clipped by the table", async ({
+  page,
+}) => {
+  const now = Date.now() / 1000;
+  const summary = {
+    errors: 0,
+    failed_rules: 0,
+    checked_rules: 2,
+    duration_ms: 1,
+  };
+  await page.route("**/api/v1/documents?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            id: "only",
+            name: "only.pdf",
+            size: 9,
+            status: "passed",
+            created: now,
+            expires: now + 3600,
+            validation_profiles: ["wcag", "pdfua1"],
+            profiles: [
+              { profile: "wcag-2.2", status: "passed", passed: true, summary },
+              { profile: "pdfua-1", status: "passed", passed: true, summary },
+            ],
+            pdf_available: true,
+            attempts: 1,
+          },
+        ],
+        total: 1,
+        matching: 1,
+        processed: 1,
+        passed_by_profile: { "wcag-2.2": 1, "pdfua-1": 1 },
+        pages: 0,
+        active_ids: [],
+      },
+    }),
+  );
+  await page.setViewportSize({ width: 1280, height: 1000 });
+  await page.goto("/");
+  await page.getByLabel("More actions for only.pdf").click();
+  const options = page.locator(".action-options");
+  await expect(
+    options.getByRole("button", { name: "Delete file" }),
+  ).toBeVisible();
+  // Hit-test where the last item is laid out: a clipping wrapper hides it
+  // without moving it, so something else is drawn there.
+  const hidden = await options.evaluate((menu) => {
+    const box = menu.lastElementChild.getBoundingClientRect();
+    const hit = document.elementFromPoint(
+      box.left + box.width / 2,
+      box.bottom - 2,
+    );
+    return !menu.contains(hit);
+  });
+  expect(hidden).toBe(false);
+});

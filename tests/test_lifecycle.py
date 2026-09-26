@@ -12,7 +12,7 @@ from portal.maintenance import sweep
 from portal.services.runner import ValidationError
 from portal.storage import Conflict
 from portal.worker import process_document, summarize
-from conftest import ISSUE, OWNER, UPLOAD, put_input, raising, successful_runner
+from conftest import ISSUE, OWNER, UPLOAD, failing_runner, put_input, raising, successful_runner
 
 BASE = "/api/v1"
 
@@ -85,6 +85,8 @@ def test_boundary_limits(client):
 
 def test_incomplete_upload_can_resume(client, store):
     doc = client.post(BASE + "/documents", json={"name": "a.pdf", "size": 9}).json()
+    # Nothing is published before validation finishes.
+    assert client.get(f"{BASE}/documents/{doc['id']}").json()["results"] == []
     assert client.post(f"{BASE}/documents/{doc['id']}/submit").status_code == 409
     assert client.post(f"{BASE}/documents/{doc['id']}/upload-url").status_code == 200
     put_input(store, doc["id"])
@@ -133,6 +135,25 @@ def test_partial_profile_results(client, store, settings, submitted):
     assert result["results"][0]["passed"] is True
     assert result["results"][1]["passed"] is None
     assert client.get(f"{BASE}/documents/{submitted}/reports/xml?profile=wcag-2.2").status_code == 404
+
+
+def test_report_parameters_are_validated_and_documented(client, store, settings, submitted):
+    reports = f"{BASE}/documents/{submitted}/reports"
+    assert client.get(reports + "/json").status_code == 409
+    process_document(store, settings, OWNER, submitted, successful_runner)
+    assert client.get(reports + "/json?profile=pdfua-1").status_code == 200
+    # XML takes a profile ID, not its alias.
+    for invalid in ("/pdf", "/xml", "/xml?profile=pdfua1", "/xml?profile=pdfua-2"):
+        assert client.get(reports + invalid).status_code == 422, invalid
+    paths = client.get("/openapi.json").json()["paths"]
+    parameters = {
+        p["name"]: p["schema"]
+        for p in paths[BASE + "/documents/{doc_id}/reports/{format}"]["get"]["parameters"]
+    }
+    assert parameters["format"]["enum"] == ["json", "xml"]
+    assert parameters["profile"]["anyOf"][0]["enum"] == ["wcag-2.2", "pdfua-1"]
+    issues = paths[BASE + "/documents/{doc_id}/issues"]["get"]["responses"]["200"]
+    assert issues["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/IssuePage"}
 
 
 def test_outbox_recovers_queue_failure(client, store, settings, uploaded, monkeypatch):
@@ -301,12 +322,7 @@ def test_summarize_overall_status_and_fields(statuses, overall):
 
 
 def test_issue_pagination(client, store, settings, submitted):
-
-    def runner(path, profile, s):
-        r, raw = successful_runner(path, profile, s)
-        r.update(issues=[{"message": str(i)} for i in range(201)], passed=False, status="failed")
-        return r, raw
-
+    runner = failing_runner([{"message": str(i)} for i in range(201)])
     process_document(store, settings, OWNER, submitted, runner)
     response = client.get(f"{BASE}/documents/{submitted}?offset=100&limit=100").json()
     assert len(response["results"][0]["issues"]) == 100

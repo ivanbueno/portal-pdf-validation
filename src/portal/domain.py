@@ -26,13 +26,24 @@ PUBLIC = {
 def public(row):
     return {key: value for key, value in row.items() if key in PUBLIC} | {
         "validation_profiles": [PROFILES[profile].alias for profile in requested_profiles(row)],
-        "profiles": json.loads(row.get("profile_summaries", "[]")),
+        "profiles": profile_summaries(row),
         "pdf_available": bool(row.get("snapshot")),
     }
 
 
+# Table Storage has no list or map properties, so these columns hold JSON.
 def requested_profiles(row):
     return json.loads(row["requested_profiles"])
+
+
+def profile_summaries(row):
+    """Each profile's published result without its issues; empty until validation finishes."""
+    return json.loads(row.get("profile_summaries", "[]"))
+
+
+def raw_reports(row):
+    """The published XML report's blob name by profile ID; a profile that errored has none."""
+    return json.loads(row.get("raw_reports", "{}"))
 
 
 def is_live(row, now=None):
@@ -69,7 +80,7 @@ def document_stats(rows):
     """Workspace totals, so clients never page through every document for summary cards."""
     passed = dict.fromkeys(PROFILES, 0)
     for row in rows:
-        for summary in json.loads(row.get("profile_summaries", "[]")):
+        for summary in profile_summaries(row):
             if summary.get("status") == Status.PASSED and summary.get("profile") in passed:
                 passed[summary["profile"]] += 1
     return {

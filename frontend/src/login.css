@@ -36,9 +36,7 @@ main.login {
   padding: 24px 32px;
   border-bottom: 1px solid var(--line);
   background-color: var(--soft);
-  background-image:
-    linear-gradient(#245dab0b 1px, transparent 1px),
-    linear-gradient(90deg, #245dab0b 1px, transparent 1px);
+  background-image: var(--brand-grid);
   background-size: 8px 8px;
 }
 .login-brand .brand-mark {
@@ -81,9 +79,9 @@ main.login {
   gap: 10px;
   min-height: 48px;
   padding: 12px 20px;
-  border: 1px solid #245dab;
+  border: 1px solid var(--brand);
   border-radius: 7px;
-  background: #245dab;
+  background: var(--brand);
   color: #fff;
   font-size: 0.9375rem;
   font-weight: 600;
@@ -91,7 +89,7 @@ main.login {
   text-decoration: none;
 }
 .login-action:hover {
-  background: #1d4d8f;
+  background: var(--brand-strong);
 }
 .login-note {
   margin: 12px 0 0;

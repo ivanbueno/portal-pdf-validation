@@ -4,7 +4,7 @@ import time
 import uuid
 from urllib.parse import quote
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
 from fastapi.responses import JSONResponse, Response, FileResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -32,6 +32,7 @@ from .domain import (
     document_stats,
     matches,
     public,
+    raw_reports,
     tombstone,
 )
 from .events import configure_logging, log_event
@@ -43,11 +44,20 @@ from .models.api import (
     DocumentPage,
     DocumentView,
     FileInput,
+    IssuePage,
+    ProfileId,
     StatusFilter,
     UploadGrant,
 )
 
 log = logging.getLogger("portal")
+
+# Paging parameters of the list endpoints; each endpoint sets its own default limit.
+Offset = Annotated[int, Query(ge=0)]
+
+
+def Limit(maximum):
+    return Annotated[int, Query(ge=1, le=maximum)]
 
 
 def standard_headers(request):
@@ -202,9 +212,9 @@ def create_app(settings=None, storage=None):
     @app.get("/api/v1/documents", response_model=DocumentPage, response_model_exclude_none=True)
     def list_documents(
         principal: Owner,
-        offset: int = Query(0, ge=0),
+        offset: Offset = 0,
         # One page holds a whole portal selection, so a batch never needs a second request.
-        limit: int = Query(20, ge=1, le=MAX_FILES),
+        limit: Limit(MAX_FILES) = 20,
         q: str = Query("", max_length=240),
         status: StatusFilter = "all",
     ):
@@ -223,14 +233,13 @@ def create_app(settings=None, storage=None):
         url, expires = storage.upload_url(input_blob(doc))
         return {"upload_url": url, "upload_expires": expires}
 
-    def report(doc):
-        if not doc.get("report"):
-            return {"results": [], "disclaimer": DISCLAIMER}
-        return json.loads(storage.read(doc["report"]))
+    def published(doc, blob, unfinished):
+        """A JSON blob the worker published for the document, or `unfinished` before it has."""
+        return json.loads(storage.read(doc[blob])) if doc.get(blob) else unfinished
 
     @app.get("/api/v1/documents/{doc_id}", response_model=DocumentDetail)
-    def get_document(doc: Document, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500)):
-        result = report(doc)
+    def get_document(doc: Document, offset: Offset = 0, limit: Limit(500) = 100):
+        result = published(doc, "report", {"results": [], "disclaimer": DISCLAIMER})
         for profile in result["results"]:
             issues = profile.get("issues", [])
             profile["issue_total"] = len(issues)
@@ -251,10 +260,10 @@ def create_app(settings=None, storage=None):
             },
         )
 
-    @app.get("/api/v1/documents/{doc_id}/issues")
-    def grouped_issues(doc: Document, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)):
+    @app.get("/api/v1/documents/{doc_id}/issues", response_model=IssuePage)
+    def grouped_issues(doc: Document, offset: Offset = 0, limit: Limit(100) = 100):
         # The worker stores the groups with the report; unfinished documents have none yet.
-        groups = json.loads(storage.read(doc["issues"])) if doc.get("issues") else []
+        groups = published(doc, "issues", [])
         return {
             "items": groups[offset : offset + limit],
             "total": len(groups),
@@ -263,7 +272,7 @@ def create_app(settings=None, storage=None):
         }
 
     @app.get("/api/v1/documents/{doc_id}/reports/{format}")
-    def download_report(doc: Document, format: str, profile: str | None = None):
+    def download_report(doc: Document, format: Literal["json", "xml"], profile: ProfileId | None = None):
         doc_id = doc["id"]
         if not doc.get("report"):
             raise HTTPException(409, "Report not available yet")
@@ -274,9 +283,9 @@ def create_app(settings=None, storage=None):
                 media_type="application/json",
                 headers={"Content-Disposition": f'attachment; filename="{doc_id}.json"'},
             )
-        if format != "xml" or profile not in PROFILES:
-            raise HTTPException(422, "Use json, or xml with a supported profile parameter")
-        raw = json.loads(doc.get("raw_reports", "{}"))
+        if profile is None:
+            raise HTTPException(422, "XML reports need a profile parameter")
+        raw = raw_reports(doc)
         if profile not in raw:
             raise HTTPException(404, "XML report unavailable for this profile")
         return Response(

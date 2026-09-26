@@ -38,10 +38,13 @@ export const plural = (count, singular, pluralForm = `${singular}s`) =>
 export const quantity = (count, singular) =>
   `${count} ${plural(count, singular)}`;
 
+// API clients may reserve a document without its size; submission records it.
 export const size = (bytes) =>
-  bytes < 1048576
-    ? `${(bytes / 1024).toFixed(1)} KiB`
-    : `${(bytes / 1048576).toFixed(1)} MiB`;
+  bytes == null
+    ? "Size unavailable"
+    : bytes < 1048576
+      ? `${(bytes / 1024).toFixed(1)} KiB`
+      : `${(bytes / 1048576).toFixed(1)} MiB`;
 // Whole-number binary units for configured limits, e.g. "200 MiB", "2 GiB".
 export const limit = (bytes) =>
   bytes >= 1073741824 ? `${bytes / 1073741824} GiB` : `${bytes / 1048576} MiB`;

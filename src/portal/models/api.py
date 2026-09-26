@@ -93,6 +93,36 @@ class DocumentDetail(DocumentView):
     limit: int
 
 
+class IssueOccurrence(BaseModel):
+    profile: ProfileId
+    message: str
+    page: int | None = None
+    location: str | None = None
+
+
+class IssueGroup(BaseModel):
+    """One check, merged across profiles; see `services.grouping`."""
+
+    specification: str | None = None
+    clause: str | None = None
+    test_number: str | None = None
+    rule_id: str | None = None
+    message: str
+    profiles: list[ProfileId]
+    counts: dict[ProfileId, int]
+    count: int = Field(description="Every occurrence, including those beyond `occurrences`")
+    occurrences: list[IssueOccurrence] = Field(
+        description="The first occurrences only; the JSON report lists every one"
+    )
+
+
+class IssuePage(BaseModel):
+    items: list[IssueGroup]
+    total: int
+    offset: int
+    limit: int
+
+
 class DeletedDocuments(BaseModel):
     deleted: int
 
