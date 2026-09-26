@@ -1,5 +1,6 @@
 // Page-preview thumbnails for issue locations and the enlarged preview dialog.
 import { api } from "./api.js";
+import { isDocumentLevel } from "./pdf-locations.js";
 import { renderOccurrencePreview } from "./pdf-previews.js";
 import { $, node } from "./ui.js";
 
@@ -20,9 +21,6 @@ function cachedPreview(docId, occurrence, width) {
 }
 const previewAlt = (image) =>
   `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
-const isDocumentLevel = (occurrence) =>
-  !occurrence.page &&
-  /(?:^|\/)metadata\[\d+\]|XMPPackage/i.test(occurrence.location || "");
 
 function thumbnailButton(docId, occurrence, image) {
   const button = node("button", undefined, "preview-thumb");

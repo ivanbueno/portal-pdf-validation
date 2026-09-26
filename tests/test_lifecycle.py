@@ -1,3 +1,4 @@
+import json
 import time
 import pytest
 from azure.core.exceptions import ServiceRequestError
@@ -6,7 +7,7 @@ from portal.config import MAX_FILE
 from portal.domain import tombstone
 from portal.maintenance import sweep
 from portal.services.runner import ValidationError
-from portal.worker import process_document
+from portal.worker import process_document, summarize
 from conftest import UPLOAD, successful_runner
 
 BASE = "/api/v1"
@@ -221,6 +222,45 @@ def test_three_transient_attempts(client, store, settings, uploaded, monkeypatch
         process_document(store, settings, "local-development", did, successful_runner)
     doc = store.get("local-development", did)
     assert doc["status"] == "error" and doc["attempts"] == 3
+
+
+def test_failed_publish_requeues_without_partial_report(client, store, settings, uploaded, monkeypatch):
+    client.post(f"{BASE}/documents/{uploaded['id']}/submit")
+    did = uploaded["id"]
+    real = store.save
+
+    def save(entity):
+        if "report" in entity:
+            raise ServiceRequestError("offline")
+        return real(entity)
+
+    monkeypatch.setattr(store, "save", save)
+    assert not process_document(store, settings, "local-development", did, successful_runner)
+    doc = store.get("local-development", did)
+    assert doc["status"] == "queued" and doc["error"] == "Temporary processing failure"
+    assert "report" not in doc and "profile_summaries" not in doc
+
+
+@pytest.mark.parametrize(
+    "statuses, overall",
+    [(("passed", "passed"), "passed"), (("passed", "failed"), "failed"), (("failed", "error"), "error")],
+)
+def test_summarize_overall_status_and_fields(statuses, overall):
+    results = [
+        {
+            "profile": profile,
+            "status": status,
+            "passed": status == "passed",
+            "issues": [{}],
+            "page_count": pages,
+        }
+        for profile, status, pages in zip(("pdfua-1", "wcag-2.2"), statuses, (None, 4))
+    ]
+    report, fields = summarize("doc", results)
+    assert fields["status"] == overall and report["passed"] == fields["passed"] == (overall == "passed")
+    assert report["page_count"] == fields["page_count"] == 4 and report["results"] is results
+    summaries = json.loads(fields["profile_summaries"])
+    assert [set(summary) for summary in summaries] == [{"profile", "status", "passed"}] * 2
 
 
 def test_issue_pagination(client, store, settings, uploaded):

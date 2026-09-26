@@ -14,6 +14,11 @@ class ValidationError(Exception):
     pass
 
 
+def profile_error(profile, error):
+    """The result for a profile that could not be validated; other profiles are unaffected."""
+    return {"profile": profile, "status": Status.ERROR, "passed": None, "error": str(error), "issues": []}
+
+
 def run_profile(path, profile, settings):
     args = [
         settings.java,

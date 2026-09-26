@@ -9,11 +9,15 @@ from .cli import run
 from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status
 from .events import log_event
 from .domain import input_blob, prefix, requested_profiles
-from .services.runner import run_profile, ValidationError
+from .services.runner import ValidationError, profile_error, run_profile
 from .storage import Conflict
 
 log = logging.getLogger("portal.worker")
 EXHAUSTED = "Processing failed after three attempts"
+
+
+class Superseded(Exception):
+    """This attempt no longer owns the document: it was deleted, expired, or claimed again."""
 
 
 def active(store, doc):
@@ -27,10 +31,9 @@ def active(store, doc):
 
 
 def process_document(store, settings, owner, doc_id, runner=run_profile):
+    """Validate one queued document. Returns False when its queue message should be redelivered."""
     doc = store.get(owner, doc_id)
-    if not doc or doc["status"] not in PROCESSING:
-        return True
-    if doc["expires"] <= time.time():
+    if not doc or doc["status"] not in PROCESSING or doc["expires"] <= time.time():
         return True
     if doc["status"] == Status.RUNNING and doc.get("lease_until", 0) > time.time():
         return False
@@ -38,90 +41,118 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
         doc.update(status=Status.ERROR, error=EXHAUSTED)
         store.save(doc)
         return True
-    doc.update(
-        status=Status.RUNNING,
-        attempts=doc["attempts"] + 1,
-        run_id=uuid.uuid4().hex,
-        lease_until=time.time() + settings.lease_seconds,
-    )
     try:
-        doc = store.save(doc)
+        doc = claim(store, settings, doc)
     except Conflict:
         return False
     log_event(log, "validation_started", document_id=doc_id, attempt=doc["attempts"])
-    run_prefix = prefix(doc) + doc["run_id"] + "/"
     try:
-        results, raw_reports = [], {}
-        with tempfile.TemporaryDirectory() as folder:
-            path = Path(folder) / "input.pdf"
-            store.download(input_blob(doc), path, doc["snapshot"])
-            for profile in requested_profiles(doc):
-                if not active(store, doc):
-                    return True
-                try:
-                    result, raw = runner(path, profile, settings)
-                    name = run_prefix + profile + ".xml"
-                    store.put(name, raw, "application/xml")
-                    raw_reports[profile] = name
-                    results.append(result)
-                except ValidationError as exc:
-                    results.append(
-                        {
-                            "profile": profile,
-                            "status": Status.ERROR,
-                            "passed": None,
-                            "error": str(exc),
-                            "issues": [],
-                        }
-                    )
-        report = {
-            "document_id": doc_id,
-            "page_count": next((r["page_count"] for r in results if r.get("page_count") is not None), None),
-            "passed": all(r["passed"] is True for r in results),
-            "results": results,
-            "disclaimer": DISCLAIMER,
-        }
-        name = run_prefix + "report.json"
-        store.put(name, json.dumps(report).encode())
-        if not active(store, doc):
-            store.purge(run_prefix)
-            return True
-        # Save the original claim ETag: deletion or a newer attempt must win this race.
-        status = (
-            Status.ERROR
-            if any(r["status"] == Status.ERROR for r in results)
-            else (Status.PASSED if report["passed"] else Status.FAILED)
-        )
-        doc.update(
-            status=status,
-            passed=report["passed"],
-            report=name,
-            raw_reports=json.dumps(raw_reports),
-            page_count=report["page_count"],
-            profile_summaries=json.dumps(
-                [{k: v for k, v in r.items() if k not in {"issues", "page_count"}} for r in results]
-            ),
-        )
-        try:
-            store.save(doc)
-        except Conflict:
-            store.purge(run_prefix)
-        log_event(log, "validation_finished", document_id=doc_id, status=status)
-        return True
+        publish(store, doc, *run_profiles(store, settings, doc, runner))
+    except Superseded:
+        pass
     except (AzureError, OSError):
-        if active(store, doc):
-            retry = doc["attempts"] < MAX_ATTEMPTS
-            doc.update(
+        release(store, doc)
+        log_event(log, "validation_infrastructure_error", logging.ERROR, document_id=doc_id)
+        return False
+    return True
+
+
+def claim(store, settings, doc):
+    """Start a new attempt under a fresh run ID and lease; raises Conflict if another worker won."""
+    return store.save(
+        doc
+        | dict(
+            status=Status.RUNNING,
+            attempts=doc["attempts"] + 1,
+            run_id=uuid.uuid4().hex,
+            lease_until=time.time() + settings.lease_seconds,
+        )
+    )
+
+
+def run_prefix(doc):
+    """Blobs written by one attempt, so a losing attempt removes exactly its own output."""
+    return prefix(doc) + doc["run_id"] + "/"
+
+
+def run_profiles(store, settings, doc, runner):
+    """Validate the snapshot against each requested profile, storing each raw XML report.
+
+    A profile that cannot be validated becomes an error result; the others still run.
+    """
+    results, raw_reports = [], {}
+    with tempfile.TemporaryDirectory() as folder:
+        path = Path(folder) / "input.pdf"
+        store.download(input_blob(doc), path, doc["snapshot"])
+        for profile in requested_profiles(doc):
+            if not active(store, doc):
+                raise Superseded()
+            try:
+                result, raw = runner(path, profile, settings)
+            except ValidationError as exc:
+                results.append(profile_error(profile, exc))
+                continue
+            name = run_prefix(doc) + profile + ".xml"
+            store.put(name, raw, "application/xml")
+            raw_reports[profile] = name
+            results.append(result)
+    return results, raw_reports
+
+
+def summarize(doc_id, results):
+    """The stored report for one attempt, and the document fields that summarize it."""
+    passed = all(r["passed"] is True for r in results)
+    page_count = next((r["page_count"] for r in results if r.get("page_count") is not None), None)
+    if any(r["status"] == Status.ERROR for r in results):
+        status = Status.ERROR
+    else:
+        status = Status.PASSED if passed else Status.FAILED
+    report = dict(
+        document_id=doc_id, page_count=page_count, passed=passed, results=results, disclaimer=DISCLAIMER
+    )
+    fields = dict(
+        status=status,
+        passed=passed,
+        page_count=page_count,
+        profile_summaries=json.dumps(
+            [{k: v for k, v in r.items() if k not in {"issues", "page_count"}} for r in results]
+        ),
+    )
+    return report, fields
+
+
+def publish(store, doc, results, raw_reports):
+    """Store the report and point the document at it, unless this attempt was superseded."""
+    report, fields = summarize(doc["id"], results)
+    name = run_prefix(doc) + "report.json"
+    store.put(name, json.dumps(report).encode())
+    if not active(store, doc):
+        store.purge(run_prefix(doc))
+        return
+    # Save against the claim's ETag: deletion or a newer attempt must win this race.
+    try:
+        store.save(doc | fields | {"report": name, "raw_reports": json.dumps(raw_reports)})
+    except Conflict:
+        store.purge(run_prefix(doc))
+    log_event(log, "validation_finished", document_id=doc["id"], status=fields["status"])
+
+
+def release(store, doc):
+    """After an infrastructure failure, requeue the document, or fail it after the last attempt."""
+    if not active(store, doc):
+        return
+    retry = doc["attempts"] < MAX_ATTEMPTS
+    try:
+        store.save(
+            doc
+            | dict(
                 status=Status.QUEUED if retry else Status.ERROR,
                 dispatched=0.0,
                 error="Temporary processing failure" if retry else EXHAUSTED,
             )
-            try:
-                store.save(doc)
-            except Conflict:
-                pass
-        log_event(log, "validation_infrastructure_error", logging.ERROR, document_id=doc_id)
-        return False
+        )
+    except Conflict:
+        pass
 
 
 def once(store, settings):
