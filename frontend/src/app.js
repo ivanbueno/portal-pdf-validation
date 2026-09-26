@@ -482,7 +482,6 @@ async function poll() {
 }
 $("search").oninput = renderResults;
 $("filter").onchange = renderResults;
-$("refresh").onclick = () => refresh().catch(showError);
 $("load-more").onclick = () => {
   documentLimit += 20;
   refresh().catch(showError);
@@ -639,7 +638,6 @@ async function loadDetail(doc, offset = 0) {
         "muted",
       ),
     );
-    summary.append(action("Refresh details", () => loadDetail(doc, offset)));
     const violations = node("section", undefined, "grouped-issues");
     violations.append(node("h3", `Accessibility issues (${groups.total})`));
     if (!groups.total)

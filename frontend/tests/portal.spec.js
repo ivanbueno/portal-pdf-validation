@@ -7,7 +7,7 @@ const fixtures = path.resolve(
   "../../tests/fixtures",
 );
 
-test("real multi-file uploads, reports, refresh, keyboard dialog, and deletion", async ({
+test("real multi-file uploads, reports, keyboard dialog, and deletion", async ({
   page,
 }) => {
   const errors = [];
@@ -74,7 +74,6 @@ test("real multi-file uploads, reports, refresh, keyboard dialog, and deletion",
   await page.keyboard.press("Enter");
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
-  await page.locator("#refresh").click();
   await expect(page.locator(".detail-row:not([hidden])")).toContainText(
     "Accessibility issues",
   );
@@ -241,7 +240,7 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
   await page.goto("/");
   await initialPoll;
   expired = true;
-  await page.locator("#refresh").click();
+  await page.reload();
   await expect(page).toHaveURL(
     /\/\.auth\/login\/aad\?post_login_redirect_uri=%2F$/,
   );
@@ -303,7 +302,7 @@ test("one invalid upload does not block other documents or duplicate retries", a
   expect(creates).toBe(2);
   await page.locator("#clear").click();
   await expect(page.locator("#staging")).toBeHidden();
-  await page.locator("#refresh").click();
+  await page.reload();
   await expect(page.locator("#results-body")).not.toContainText("invalid.pdf");
   await expect(page.locator("#results-body")).toContainText("independent.pdf");
 });
