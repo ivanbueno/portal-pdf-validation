@@ -68,6 +68,12 @@ def create_app(settings=None, storage=None):
     app.state.settings, app.state.storage = settings, storage
     Owner = Annotated[str, Depends(owner)]
 
+    def owned_document(doc_id: str, principal: Owner):
+        return get_owned(storage, principal, doc_id)
+
+    # The `{doc_id}` path document, which must belong to the caller.
+    Document = Annotated[dict, Depends(owned_document)]
+
     @app.middleware("http")
     async def headers(request: Request, call_next):
         request_id = uuid.uuid4().hex
@@ -130,7 +136,7 @@ def create_app(settings=None, storage=None):
             "maxSelectionBytes": MAX_SELECTION,
             "disclaimer": DISCLAIMER,
             "profiles": [
-                {"id": profile_id, "alias": profile.alias, "label": profile.label}
+                {"id": profile_id, "alias": profile.alias, "label": profile.label, "default": profile.default}
                 for profile_id, profile in PROFILES.items()
             ],
             "statuses": {"active": ACTIVE, "terminal": TERMINAL},
@@ -164,8 +170,8 @@ def create_app(settings=None, storage=None):
         response_model=DocumentView,
         response_model_exclude_none=True,
     )
-    def submit_document(doc_id: str, principal: Owner):
-        return public(submit(storage, settings, principal, doc_id))
+    def submit_document(doc: Document):
+        return public(submit(storage, settings, doc))
 
     @app.get("/api/v1/documents", response_model=DocumentPage, response_model_exclude_none=True)
     def list_documents(
@@ -184,8 +190,7 @@ def create_app(settings=None, storage=None):
         return {"items": items, "total": len(rows), "matching": len(matching)} | document_stats(rows)
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
-    def renew_upload(doc_id: str, principal: Owner):
-        doc = get_owned(storage, principal, doc_id, "document")
+    def renew_upload(doc: Document):
         if doc["status"] != Status.UPLOADING:
             raise HTTPException(409, "Upload is already finalized")
         url, expires = storage.upload_url(input_blob(doc))
@@ -197,10 +202,7 @@ def create_app(settings=None, storage=None):
         return json.loads(storage.read(doc["report"]))
 
     @app.get("/api/v1/documents/{doc_id}", response_model=DocumentDetail)
-    def get_document(
-        doc_id: str, principal: Owner, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500)
-    ):
-        doc = get_owned(storage, principal, doc_id, "document")
+    def get_document(doc: Document, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=500)):
         result = report(doc)
         for profile in result["results"]:
             issues = profile.get("issues", [])
@@ -209,8 +211,7 @@ def create_app(settings=None, storage=None):
         return public(doc) | result | {"offset": offset, "limit": limit}
 
     @app.get("/api/v1/documents/{doc_id}/pdf")
-    def view_pdf(doc_id: str, principal: Owner):
-        doc = get_owned(storage, principal, doc_id, "document")
+    def view_pdf(doc: Document):
         if not doc.get("snapshot"):
             raise HTTPException(409, "PDF available after submission")
         chunks = storage.stream(input_blob(doc), doc["snapshot"])
@@ -224,10 +225,7 @@ def create_app(settings=None, storage=None):
         )
 
     @app.get("/api/v1/documents/{doc_id}/issues")
-    def grouped_issues(
-        doc_id: str, principal: Owner, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)
-    ):
-        doc = get_owned(storage, principal, doc_id, "document")
+    def grouped_issues(doc: Document, offset: int = Query(0, ge=0), limit: int = Query(100, ge=1, le=100)):
         if doc.get("issues"):
             groups = json.loads(storage.read(doc["issues"]))
         else:
@@ -241,8 +239,8 @@ def create_app(settings=None, storage=None):
         }
 
     @app.get("/api/v1/documents/{doc_id}/reports/{format}")
-    def download_report(doc_id: str, format: str, principal: Owner, profile: str | None = None):
-        doc = get_owned(storage, principal, doc_id, "document")
+    def download_report(doc: Document, format: str, profile: str | None = None):
+        doc_id = doc["id"]
         if not doc.get("report"):
             raise HTTPException(409, "Report not available yet")
         if format == "json":
@@ -269,8 +267,8 @@ def create_app(settings=None, storage=None):
         )
 
     @app.delete("/api/v1/documents/{doc_id}", status_code=204)
-    def delete_document(doc_id: str, principal: Owner):
-        tombstone(storage, get_owned(storage, principal, doc_id, "document"), settings)
+    def delete_document(doc: Document):
+        tombstone(storage, doc, settings)
         return Response(status_code=204)
 
     if (settings.dist / "assets").exists():

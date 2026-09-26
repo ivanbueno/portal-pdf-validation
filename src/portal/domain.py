@@ -123,9 +123,10 @@ def input_blob(doc):
     return prefix(doc) + "input.pdf"
 
 
-def get_owned(store, owner, key, kind):
-    row = store.get(owner, key)
-    if not row or row.get("kind") != kind or not is_live(row):
+def get_owned(store, owner, doc_id):
+    """The owner's live document; anything else is indistinguishable from a missing one."""
+    row = store.get(owner, doc_id)
+    if not row or row.get("kind") != "document" or not is_live(row):
         raise HTTPException(404, "Not found")
     return row
 
@@ -163,8 +164,7 @@ def reserve(store, settings, owner, body, key):
     return doc
 
 
-def submit(store, settings, owner, doc_id):
-    doc = get_owned(store, owner, doc_id, "document")
+def submit(store, settings, doc):
     if doc["status"] == Status.UPLOADING:
         try:
             snapshot, size = store.snapshot(input_blob(doc), doc.get("size"))

@@ -44,20 +44,7 @@
               <strong id="stat-processed">0</strong><span>Files processed</span>
             </div>
           </article>
-          <article class="stat-card good">
-            <span class="stat-icon">✓</span>
-            <div>
-              <strong data-passed-profile="wcag-2.2">0</strong
-              ><span>WCAG compliant</span>
-            </div>
-          </article>
-          <article class="stat-card">
-            <span class="stat-icon">✓</span>
-            <div>
-              <strong data-passed-profile="pdfua-1">0</strong
-              ><span>PDF/UA compliant</span>
-            </div>
-          </article>
+          <!-- One passed-count card per validation profile renders here. -->
           <article class="stat-card accent">
             <span class="stat-icon">▤</span>
             <div>
@@ -104,21 +91,8 @@
             ><strong>Run options</strong
             ><span class="muted">Recommended defaults are selected</span>
           </summary>
-          <fieldset class="validation-options">
+          <fieldset id="profile-options" class="validation-options">
             <legend>Validation requirement</legend>
-            <label
-              ><input
-                type="checkbox"
-                name="profile"
-                value="wcag"
-                checked
-              /><strong>WCAG 2.2</strong></label
-            >
-            <label
-              ><input type="checkbox" name="profile" value="pdfua1" /><strong
-                >PDF/UA-1</strong
-              ></label
-            >
           </fieldset>
         </details>
         <div class="submit-row">
@@ -185,10 +159,7 @@
         </div>
       </section>
       <footer>
-        <p>
-          Automated checks do not establish full accessibility or WCAG
-          conformance. Manual review is required.
-        </p>
+        <p id="disclaimer"></p>
         <a href="/docs" target="_blank" rel="noopener">API documentation ↗</a>
       </footer>
     </main>

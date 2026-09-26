@@ -17,6 +17,23 @@ const selectedProfiles = () =>
     (input) => input.value,
   );
 
+// One checkbox per profile; the profiles the API runs by default start checked.
+function renderProfileOptions() {
+  $("profile-options").append(
+    ...config.profiles.map((profile) => {
+      const input = node("input");
+      input.type = "checkbox";
+      input.name = "profile";
+      input.value = profile.alias;
+      input.checked = profile.default;
+      input.addEventListener("change", renderStaging);
+      const option = node("label");
+      option.append(input, node("strong", profile.label));
+      return option;
+    }),
+  );
+}
+
 function renderStaging() {
   $("staging").hidden = !staged.length;
   $("submit").disabled =
@@ -212,9 +229,7 @@ function initDragAndDrop() {
 }
 
 export function initUploads() {
-  document
-    .querySelectorAll('input[name="profile"]')
-    .forEach((input) => input.addEventListener("change", renderStaging));
+  renderProfileOptions();
   $("files").onchange = (e) => {
     addFiles(e.target.files);
     e.target.value = "";

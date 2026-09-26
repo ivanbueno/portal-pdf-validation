@@ -1,5 +1,5 @@
 // The document table, summary cards, batch progress, and polling.
-import { api, account, download } from "./api.js";
+import { api, account, config, download } from "./api.js";
 import { loadDetail } from "./detail.js";
 import {
   $,
@@ -42,6 +42,23 @@ export function trackDocument(id) {
 export function showBatch() {
   documentLimit = Math.max(documentLimit, progressDocumentIds.size);
   return refresh();
+}
+
+// One passed-count card per profile, between the files and pages cards.
+function renderProfileStats() {
+  $("stat-pages")
+    .closest(".stat-card")
+    .before(
+      ...config.profiles.map((profile) => {
+        const count = node("strong", "0");
+        count.dataset.passedProfile = profile.id;
+        const text = node("div");
+        text.append(count, node("span", `${profile.label} compliant`));
+        const card = node("article", undefined, "stat-card good");
+        card.append(node("span", "✓", "stat-icon"), text);
+        return card;
+      }),
+    );
 }
 
 function renderStats() {
@@ -325,6 +342,7 @@ const closeMenus = (handle) =>
   document.querySelectorAll(".action-dropdown[open]").forEach(handle);
 
 export function initResults() {
+  renderProfileStats();
   $("search").oninput = () => {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => refresh().catch(showError), 250);

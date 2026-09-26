@@ -22,10 +22,11 @@ class Profile:
     default: bool = False
 
 
-# Every validation profile by ID. Requests, reports, workspace stats, and the portal derive from it.
+# Every validation profile by ID, in the portal's display order. Requests, reports, workspace
+# stats, and the portal's options and summary cards derive from it.
 PROFILES = {
-    "pdfua-1": Profile(label="PDF/UA-1", alias="pdfua1", flavour="ua1"),
     "wcag-2.2": Profile(label="WCAG 2.2", alias="wcag", default=True),
+    "pdfua-1": Profile(label="PDF/UA-1", alias="pdfua1", flavour="ua1"),
 }
 PROFILE_ALIASES = {profile.alias: profile_id for profile_id, profile in PROFILES.items()}
 DEFAULT_PROFILES = tuple(profile_id for profile_id, profile in PROFILES.items() if profile.default)

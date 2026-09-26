@@ -24,6 +24,7 @@ $("signout").onclick = signOut;
 $("signin").hidden = !!account();
 $("signout").hidden = config.local || !account();
 $("identity").textContent = account()?.name || "Organization sign-in required";
+$("disclaimer").textContent = config.disclaimer;
 
 initUploads();
 initResults();

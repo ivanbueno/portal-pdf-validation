@@ -197,8 +197,8 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
         maxSelectionBytes: 2147483648,
         disclaimer: "Manual review is required.",
         profiles: [
-          { id: "pdfua-1", alias: "pdfua1", label: "PDF/UA-1" },
-          { id: "wcag-2.2", alias: "wcag", label: "WCAG 2.2" },
+          { id: "wcag-2.2", alias: "wcag", label: "WCAG 2.2", default: true },
+          { id: "pdfua-1", alias: "pdfua1", label: "PDF/UA-1", default: false },
         ],
         statuses: {
           active: ["uploading", "queued", "running"],

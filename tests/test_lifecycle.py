@@ -20,6 +20,9 @@ def test_profiles_default_to_wcag_and_accept_aliases(client):
         return client.post(BASE + "/documents", json={"name": "a.pdf"} | body)
 
     assert profiles({}).json()["validation_profiles"] == ["wcag"]
+    # The portal preselects exactly the profiles the API runs by default.
+    options = client.get("/api/config").json()["profiles"]
+    assert [option["alias"] for option in options if option["default"]] == ["wcag"]
     assert profiles({"profiles": ["pdfua1"]}).json()["validation_profiles"] == ["pdfua1"]
     both = profiles({"profiles": ["wcag-2.2", "pdfua1"]}).json()
     assert both["validation_profiles"] == ["wcag", "pdfua1"]
