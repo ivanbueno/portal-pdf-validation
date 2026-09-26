@@ -3,14 +3,15 @@ import sys
 import time
 import pytest
 from azure.core.exceptions import ServiceRequestError
-from portal import cli, worker
+from fastapi.testclient import TestClient
+from portal import app as portal_app, cli, worker
 from portal.auth import owner
-from portal.config import MAX_FILE
+from portal.config import MAX_FILE, MAX_FILES
 from portal.domain import tombstone
 from portal.maintenance import sweep
 from portal.services.runner import ValidationError
 from portal.worker import process_document, summarize
-from conftest import OWNER, UPLOAD, put_input, raising, successful_runner
+from conftest import ISSUE, OWNER, UPLOAD, put_input, raising, successful_runner
 
 BASE = "/api/v1"
 
@@ -251,7 +252,7 @@ def test_summarize_overall_status_and_fields(statuses, overall):
             "profile": profile,
             "status": status,
             "passed": status == "passed",
-            "issues": [{"rule_id": "ISO:7.2:20", "message": "m"}],
+            "issues": [ISSUE],
             "page_count": pages,
         }
         for profile, status, pages in zip(("pdfua-1", "wcag-2.2"), statuses, (None, 4))
@@ -299,6 +300,25 @@ def test_generated_key_survives_grant_failure(client, store, monkeypatch):
     assert replay.status_code == 201 and len(store.rows()) == 1
 
 
+def test_unexpected_failure_keeps_request_id_and_idempotency_key(settings, store, monkeypatch):
+    events = []
+    monkeypatch.setattr(portal_app, "log_event", lambda logger, event, *args, **fields: events.append(fields))
+    monkeypatch.setattr(store, "upload_url", raising(RuntimeError("private/path.pdf")))
+    client = TestClient(portal_app.create_app(settings, store), raise_server_exceptions=False)
+    failed = client.post(BASE + "/documents", json={"name": "a.pdf", "size": 9})
+    assert failed.status_code == 500 and failed.json() == {"detail": "Internal server error"}
+    assert failed.headers["Cache-Control"] == "no-store" and failed.headers["Idempotency-Key"]
+    # The request is logged with its ID and the exception type, never the message.
+    assert events == [
+        {
+            "request_id": failed.headers["X-Request-ID"],
+            "status": 500,
+            "duration_ms": events[0]["duration_ms"],
+            "error": "RuntimeError",
+        }
+    ]
+
+
 def test_independent_submissions_and_history_pagination(client, store, settings, uploaded):
     other = client.post(BASE + "/documents", json={"name": "missing.pdf", "size": 9}).json()
     assert client.post(f"{BASE}/documents/{other['id']}/submit").status_code == 409
@@ -308,6 +328,9 @@ def test_independent_submissions_and_history_pagination(client, store, settings,
     assert page["total"] == 2 and len(page["items"]) == 1
     second = client.get(BASE + "/documents?limit=1&offset=1").json()
     assert second["items"][0]["id"] != page["items"][0]["id"]
+    # A page can hold a whole portal selection, and no more.
+    assert client.get(f"{BASE}/documents?limit={MAX_FILES}").status_code == 200
+    assert client.get(f"{BASE}/documents?limit={MAX_FILES + 1}").status_code == 422
     client.delete(f"{BASE}/documents/{other['id']}")
     assert client.get(f"{BASE}/documents/{uploaded['id']}").json()["status"] == "passed"
 

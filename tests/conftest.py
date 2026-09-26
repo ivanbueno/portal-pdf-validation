@@ -101,6 +101,15 @@ def client(settings, store):
     return TestClient(create_app(settings, store))
 
 
+# A failed check as the parser reports it; the same check fails under both profiles.
+ISSUE = {
+    "rule_id": "ISO 14289-1:2014:7.2:20",
+    "specification": "ISO 14289-1:2014",
+    "clause": "7.2",
+    "test_number": "20",
+    "message": "Failed check",
+}
+
 # Requests every profile (the API default is WCAG only) so shared tests cover multi-profile results.
 UPLOAD = {"name": "example.pdf", "size": 9, "profiles": ["pdfua1", "wcag"]}
 

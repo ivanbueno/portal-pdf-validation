@@ -9,10 +9,6 @@ def group_issues(results):
     for result in results:
         for issue in result.get("issues", []):
             specification, clause, test = (issue.get(k) for k in ("specification", "clause", "test_number"))
-            if not clause and issue.get("rule_id"):
-                parts = issue["rule_id"].rsplit(":", 2)
-                if len(parts) == 3:
-                    specification, clause, test = parts
             key = (
                 (specification, clause, test)
                 if clause and test

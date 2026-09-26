@@ -259,7 +259,10 @@ export async function refresh() {
   let data;
   do {
     params.set("offset", collected.length);
-    params.set("limit", Math.min(100, documentLimit - collected.length));
+    params.set(
+      "limit",
+      Math.min(config.maxFiles, documentLimit - collected.length),
+    );
     data = await api(`/documents?${params}`);
     collected.push(...data.items);
   } while (

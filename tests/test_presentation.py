@@ -2,7 +2,7 @@ from portal.auth import owner
 from portal.services.grouping import group_issues
 from portal.services.report_parser import parse_verapdf_xml
 from portal.worker import process_document
-from conftest import OWNER, put_input, successful_runner
+from conftest import ISSUE, OWNER, put_input, successful_runner
 
 
 def test_group_by_specification_clause_test_preserves_profiles_and_locations():
@@ -28,18 +28,6 @@ def test_group_by_specification_clause_test_preserves_profiles_and_locations():
     assert groups[0]["count"] == 3 and groups[0]["message"] == "Rule description"
     assert groups[0]["counts"] == {"pdfua-1": 2, "wcag-2.2": 1}
     assert groups[0]["occurrences"][1]["location"] == "page 2"
-    legacy = group_issues(
-        [
-            {
-                "profile": "pdfua-1",
-                "issues": [
-                    {"rule_id": "ISO:7.2:20", "message": "first"},
-                    {"rule_id": "ISO:7.2:20", "message": "second"},
-                ],
-            }
-        ]
-    )
-    assert legacy[0]["clause"] == "7.2" and legacy[0]["count"] == 2
 
 
 def test_pdf_view_is_private_immutable_and_revoked(client, store, uploaded):
@@ -70,9 +58,7 @@ def test_metadata_and_grouping_before_pagination(client, store, settings, submit
             page_count=7,
             status="failed",
             passed=False,
-            issues=[
-                {"rule_id": "ISO:7.2:20", "message": str(i), "location": f"page {i + 1}"} for i in range(201)
-            ],
+            issues=[ISSUE | {"message": str(i), "location": f"page {i + 1}"} for i in range(201)],
         )
         result["summary"].update(errors=201, failed_rules=1)
         return result, xml
@@ -127,7 +113,7 @@ def test_issue_views_read_groups_stored_at_publish(client, store, settings, subm
 
     def runner(path, profile, s):
         result, xml = successful_runner(path, profile, s)
-        result.update(status="failed", passed=False, issues=[{"rule_id": "ISO:7.2:20", "message": "m"}] * 150)
+        result.update(status="failed", passed=False, issues=[ISSUE] * 150)
         return result, xml
 
     process_document(store, settings, OWNER, submitted, runner)

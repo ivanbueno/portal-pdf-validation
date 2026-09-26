@@ -32,8 +32,7 @@ def public(row):
 
 
 def requested_profiles(row):
-    # Rows from before profile selection ran every profile.
-    return json.loads(row["requested_profiles"]) if "requested_profiles" in row else list(PROFILES)
+    return json.loads(row["requested_profiles"])
 
 
 def is_live(row, now=None):

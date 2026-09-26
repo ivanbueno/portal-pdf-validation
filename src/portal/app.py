@@ -42,6 +42,21 @@ from .models.api import DocumentView, DocumentPage, DocumentDetail, FileInput, S
 log = logging.getLogger("portal")
 
 
+def standard_headers(request):
+    """Headers on every response, including the 500 for an unexpected failure."""
+    headers = {
+        "X-Content-Type-Options": "nosniff",
+        "Referrer-Policy": "strict-origin-when-cross-origin",
+        "Cache-Control": "no-store",
+    }
+    if request_id := getattr(request.state, "request_id", None):
+        headers["X-Request-ID"] = request_id
+    # A client retries a failed create with this key rather than creating a duplicate.
+    if key := getattr(request.state, "idempotency_key", None):
+        headers["Idempotency-Key"] = key
+    return headers
+
+
 def create_app(settings=None, storage=None):
     configure_logging()
     settings = settings or Settings()
@@ -70,28 +85,37 @@ def create_app(settings=None, storage=None):
 
     @app.middleware("http")
     async def headers(request: Request, call_next):
-        request_id = uuid.uuid4().hex
+        request.state.request_id = uuid.uuid4().hex
         start = time.monotonic()
-        response = await call_next(request)
-        response.headers.update(
-            {
-                "X-Request-ID": request_id,
-                "X-Content-Type-Options": "nosniff",
-                "Referrer-Policy": "strict-origin-when-cross-origin",
-                "Cache-Control": "no-store",
-            }
-        )
-        if key := getattr(request.state, "idempotency_key", None):
-            response.headers["Idempotency-Key"] = key
-        # No paths, filenames, tokens, query strings, or exception messages in request logs.
-        log_event(
-            log,
-            "request",
-            request_id=request_id,
-            status=response.status_code,
-            duration_ms=int((time.monotonic() - start) * 1000),
-        )
+
+        def logged(status, level=logging.INFO, **fields):
+            # No paths, filenames, tokens, query strings, or exception messages in request logs.
+            duration_ms = int((time.monotonic() - start) * 1000)
+            log_event(
+                log,
+                "request",
+                level,
+                request_id=request.state.request_id,
+                status=status,
+                duration_ms=duration_ms,
+                **fields,
+            )
+
+        try:
+            response = await call_next(request)
+        except Exception as exc:
+            # `unexpected` sends the 500 from outside this middleware; the server logs the traceback.
+            logged(500, logging.ERROR, error=type(exc).__name__)
+            raise
+        response.headers.update(standard_headers(request))
+        logged(response.status_code)
         return response
+
+    @app.exception_handler(Exception)
+    async def unexpected(request, exc):
+        return JSONResponse(
+            {"detail": "Internal server error"}, status_code=500, headers=standard_headers(request)
+        )
 
     @app.exception_handler(Conflict)
     async def conflict(request, exc):
@@ -171,7 +195,8 @@ def create_app(settings=None, storage=None):
     def list_documents(
         principal: Owner,
         offset: int = Query(0, ge=0),
-        limit: int = Query(20, ge=1, le=100),
+        # One page holds a whole portal selection, so a batch never needs a second request.
+        limit: int = Query(20, ge=1, le=MAX_FILES),
         q: str = Query("", max_length=240),
         status: StatusFilter = "all",
     ):
