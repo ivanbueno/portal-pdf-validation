@@ -67,6 +67,21 @@ def is_live(row, now=None):
     return row["status"] != "deleted" and row["expires"] > (now or time.time())
 
 
+# Everything `public`, `matches`, and `document_stats` read from a listed row.
+LISTED = sorted(PUBLIC | {"kind", "requested_profiles", "profile_summaries", "snapshot"})
+
+
+def live_documents(store, owner, now):
+    """The owner's live documents: filtered by Table Storage, then re-checked here."""
+    rows = store.rows(
+        owner,
+        where="kind eq 'document' and status ne 'deleted' and expires gt @now",
+        parameters={"now": now},
+        select=LISTED,
+    )
+    return [row for row in rows if row.get("kind") == "document" and is_live(row, now)]
+
+
 def matches(row, query, status):
     if query and query not in row["name"].casefold():
         return False

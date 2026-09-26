@@ -26,7 +26,7 @@ from .domain import (
     submit,
     get_owned,
     input_blob,
-    is_live,
+    live_documents,
     document_view,
     document_stats,
     matches,
@@ -174,7 +174,7 @@ def create_app(settings=None, storage=None):
         status: Literal["all", "active", "passed", "failed", "error"] = "all",
     ):
         now = time.time()
-        rows = [r for r in storage.rows(principal) if r.get("kind") == "document" and is_live(r, now)]
+        rows = live_documents(storage, principal, now)
         rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
         query = q.strip().casefold()
         matching = [r for r in rows if matches(r, query, status)]

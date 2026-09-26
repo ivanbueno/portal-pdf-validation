@@ -40,8 +40,13 @@ class MemoryStorage:
             raise Conflict()
         del self.entities[key]
 
-    def rows(self, owner=None):
-        return [copy.deepcopy(v) for (p, k), v in self.entities.items() if not owner or p == owner]
+    def rows(self, owner=None, where=None, parameters=None, select=None):
+        # Ignores the OData prefilter on purpose: callers must be correct without it.
+        rows = [copy.deepcopy(v) for (p, k), v in self.entities.items() if not owner or p == owner]
+        if select:
+            # A partial `$select` read: only listed, non-null properties and no ETag.
+            rows = [{k: row[k] for k in select if row.get(k) is not None} for row in rows]
+        return rows
 
     def upload_url(self, name):
         return "https://storage.test/" + name + "?sig=example", time.time() + 3600

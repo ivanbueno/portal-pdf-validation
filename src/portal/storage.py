@@ -21,6 +21,12 @@ def _stored(entity):
     return {k: v for k, v in entity.items() if not k.startswith("_") and v is not None}
 
 
+def _row(entity, etag=True):
+    # `$select` returns absent properties as null; drop them so partial rows match stored ones.
+    row = {k: v for k, v in entity.items() if v is not None}
+    return (row | {"_etag": entity.metadata["etag"]}) if etag else row
+
+
 class Storage:
     def __init__(self, settings):
         self.settings = settings
@@ -53,8 +59,7 @@ class Storage:
 
     def get(self, owner, key):
         try:
-            entity = self.table.get_entity(owner, key)
-            return dict(entity) | {"_etag": entity.metadata["etag"]}
+            return _row(self.table.get_entity(owner, key))
         except ResourceNotFoundError:
             return None
 
@@ -94,13 +99,23 @@ class Storage:
         except ResourceModifiedError:
             raise Conflict()
 
-    def rows(self, owner=None):
-        if owner:
-            entities = self.table.query_entities("PartitionKey eq @owner", parameters={"owner": owner})
+    def rows(self, owner=None, where=None, parameters=None, select=None):
+        """Yield rows, optionally prefiltered by the service with an OData `where` clause.
+
+        `where` only avoids transferring rows; callers still apply their own checks. The SDK
+        substitutes `@name` parameters by splitting on single spaces, so keep them space-delimited.
+        Rows read with `select` are partial and carry no ETag, so they can never be saved.
+        """
+        clauses = ["PartitionKey eq @owner"] if owner else []
+        if where:
+            clauses.append(f"( {where} )")
+        parameters = (parameters or {}) | ({"owner": owner} if owner else {})
+        if clauses:
+            entities = self.table.query_entities(" and ".join(clauses), parameters=parameters, select=select)
         else:
-            entities = self.table.list_entities()
+            entities = self.table.list_entities(select=select)
         for entity in entities:
-            yield dict(entity) | {"_etag": entity.metadata["etag"]}
+            yield _row(entity, etag=not select)
 
     def blob(self, name, snapshot=None):
         return self.container.get_blob_client(name, snapshot=snapshot)

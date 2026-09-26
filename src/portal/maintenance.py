@@ -7,12 +7,18 @@ from .domain import dispatch_document, tombstone, prefix
 from .storage import Conflict
 
 log = logging.getLogger("portal.maintenance")
+# Rows the sweep can act on. Unexpired uploads and finished results need nothing, so the
+# service skips them. Full rows (with ETags) are required because the sweep saves them.
+CANDIDATES = (
+    "kind eq 'document' and ( status eq 'deleted' or status eq 'queued' or status eq 'running'"
+    " or expires le @now )"
+)
 
 
 def sweep(store, settings):
     now = time.time()
     failures = 0
-    for row in store.rows():
+    for row in store.rows(where=CANDIDATES, parameters={"now": now}):
         try:
             if row["kind"] != "document":
                 continue

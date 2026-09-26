@@ -24,7 +24,7 @@ function outcome(result, status) {
 function renderSummary(d) {
   const summary = node("aside", undefined, "validation-summary");
   summary.append(node("h3", "Validation summary"));
-  for (const r of d.results) {
+  for (const r of d.profiles || []) {
     const section = node("div", undefined, "summary-profile");
     section.append(
       node("strong", profileLabel(r.profile)),
@@ -152,17 +152,16 @@ export async function loadDetail(doc, row, offset = 0) {
   );
   content.setAttribute("aria-live", "polite");
   try {
-    const [d, groups] = await Promise.all([
-      api(`/documents/${doc.id}?limit=1`),
-      api(`/documents/${doc.id}/issues?offset=${offset}`),
-    ]);
+    // The listed document already carries the per-profile summaries, so only
+    // the issue groups need the stored report.
+    const groups = await api(`/documents/${doc.id}/issues?offset=${offset}`);
     const violations = node("section", undefined, "grouped-issues");
     violations.append(node("h3", `Accessibility issues (${groups.total})`));
     if (!groups.total)
       violations.append(
         node(
           "p",
-          NO_ISSUES[d.status] ||
+          NO_ISSUES[doc.status] ||
             "Results will appear when validation finishes.",
           "muted",
         ),
@@ -183,7 +182,7 @@ export async function loadDetail(doc, row, offset = 0) {
         ),
       );
     violations.append(nav, node("p", config.disclaimer, "muted"));
-    content.replaceChildren(renderSummary(d), violations);
+    content.replaceChildren(renderSummary(doc), violations);
   } catch (error) {
     content.replaceChildren(
       node("p", error.message, "error"),
