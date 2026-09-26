@@ -1,13 +1,22 @@
 // File staging, drag and drop, and the reserve → upload → submit workflow.
 import { api, config, upload } from "./api.js";
 import { beginBatch, showBatch, trackDocument } from "./results.js";
-import { $, action, limit, node, notify, showError, size } from "./ui.js";
+import {
+  $,
+  action,
+  limit,
+  node,
+  notify,
+  plural,
+  quantity,
+  showError,
+  size,
+} from "./ui.js";
 
 const UPLOAD_CONCURRENCY = 3;
 
 let staged = [],
   busy = false,
-  stagingFrame,
   // Nested dragenter/dragleave events fire per element; count them.
   fileDragDepth = 0;
 
@@ -34,41 +43,44 @@ function renderProfileOptions() {
   );
 }
 
+// A staged file and its table row, built once so upload progress updates
+// only the row's state cell.
+function stage(file) {
+  const item = { file, stateCell: node("td", "Ready") };
+  item.remove = action("Remove", async () => {
+    await cancelUpload(item);
+    unstage(item);
+    renderStaging();
+  });
+  item.remove.setAttribute("aria-label", `Remove ${file.name}`);
+  const actions = node("td");
+  actions.append(item.remove);
+  item.row = node("tr");
+  item.row.append(
+    node("td", file.name),
+    node("td", size(file.size)),
+    item.stateCell,
+    actions,
+  );
+  return item;
+}
+
+// Looks the item up rather than trusting an index: another removal may have
+// finished first and shifted it, or cleared the list.
+function unstage(item) {
+  const index = staged.indexOf(item);
+  if (index !== -1) staged.splice(index, 1);
+}
+
 function renderStaging() {
   $("staging").hidden = !staged.length;
   $("submit").disabled = busy || !staged.length || !selectedProfiles().length;
   $("clear").disabled = busy;
   $("files").disabled = busy;
   $("staged-total").textContent =
-    `${staged.length} files · ${size(stagedBytes())}`;
-  $("staged-body").replaceChildren(
-    ...staged.map((s, i) => {
-      const tr = node("tr");
-      tr.append(
-        node("td", s.file.name),
-        node("td", size(s.file.size)),
-        node("td", s.state || "Ready"),
-      );
-      const remove = action("Remove", async () => {
-        await cancelUpload(s);
-        staged.splice(i, 1);
-        renderStaging();
-      });
-      remove.disabled = busy;
-      remove.setAttribute("aria-label", `Remove ${s.file.name}`);
-      const td = node("td");
-      td.append(remove);
-      tr.append(td);
-      return tr;
-    }),
-  );
-}
-// Coalesces frequent upload-progress updates into one render per frame.
-function scheduleStagingRender() {
-  stagingFrame ||= requestAnimationFrame(() => {
-    stagingFrame = undefined;
-    renderStaging();
-  });
+    `${quantity(staged.length, "file")} · ${size(stagedBytes())}`;
+  for (const item of staged) item.remove.disabled = busy;
+  $("staged-body").replaceChildren(...staged.map((item) => item.row));
 }
 
 function addFiles(files) {
@@ -95,7 +107,7 @@ function addFiles(files) {
       );
       break;
     }
-    staged.push({ file, state: "Ready" });
+    staged.push(stage(file));
   }
   renderStaging();
 }
@@ -135,15 +147,14 @@ async function submitItem(item) {
         await api(`/documents/${item.doc.id}/upload-url`, { method: "POST" })
       ).upload_url;
       await upload(uploadUrl, item.file, (p) => {
-        item.state = `${p}%`;
-        scheduleStagingRender();
+        item.stateCell.textContent = `${p}%`;
       });
       item.uploaded = true;
     }
     await api(`/documents/${item.doc.id}/submit`, { method: "POST" });
   }
   trackDocument(item.doc.id);
-  staged.splice(staged.indexOf(item), 1);
+  unstage(item);
 }
 
 function setSubmitting(submitting) {
@@ -155,7 +166,7 @@ function setSubmitting(submitting) {
   } else {
     $("submit").removeAttribute("aria-busy");
     $("submit").textContent = staged.length
-      ? "Retry remaining files"
+      ? `Retry remaining ${plural(staged.length, "file")}`
       : "Validate PDFs →";
   }
   renderStaging();
@@ -175,16 +186,17 @@ async function submitStaged() {
         submitted++;
       } catch (error) {
         item.key ||= error.idempotencyKey;
-        item.state = error.message || "Retry required";
+        item.stateCell.textContent = error.message || "Retry required";
       }
       renderStaging();
     }
   };
   await Promise.all(Array.from({ length: UPLOAD_CONCURRENCY }, uploader));
   setSubmitting(false);
+  const remaining = staged.length;
   notify(
-    `${submitted} files submitted. ${staged.length ? `${staged.length} files need attention; retry the remaining files.` : "You can leave this page and return to your results."}`,
-    !!staged.length,
+    `${quantity(submitted, "file")} submitted. ${remaining ? `${quantity(remaining, "file")} ${plural(remaining, "needs", "need")} attention; retry the remaining ${plural(remaining, "file")}.` : "You can leave this page and return to your results."}`,
+    !!remaining,
   );
   await showBatch().catch(showError);
 }

@@ -30,6 +30,19 @@ def test_reused_parser_supports_real_check_nodes():
     assert r.issues[0].rule_id == "UA:5:1"
 
 
+def test_every_failed_check_carries_its_rule_fields():
+    xml = """<validationReport isCompliant="false"><rule status="failed" specification="UA" clause="7.1" testNumber="3"><description>Tag content</description><object>SEContentItem</object><check status="failed"><context>root/pages[1]</context><errorMessage>First</errorMessage></check><check status="passed"><context>root/pages[2]</context></check><check status="failed"><errorMessage>Second</errorMessage></check></rule><rule status="failed" clause="8"><test>isTagged</test></rule></validationReport>"""
+    first, second, bare = parse_verapdf_xml(xml, 1).issues
+    for issue in (first, second):
+        assert (issue.rule_id, issue.clause, issue.test_number) == ("UA:7.1:3", "7.1", "3")
+        assert issue.description == "Tag content"
+    assert (first.message, first.location, first.page) == ("First", "root/pages[1]", 2)
+    # A check without its own location falls back to the rule's object.
+    assert (second.message, second.location) == ("Second", "SEContentItem")
+    # A failed rule without checks is one issue, described by its test.
+    assert (bare.message, bare.location, bare.rule_id) == ("isTagged", None, "8")
+
+
 def test_xml_entities_rejected():
     with pytest.raises(Exception):
         parse_verapdf_xml(

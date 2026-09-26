@@ -88,10 +88,16 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
         if status and status != "failed":
             continue
 
-        rule_id = _build_rule_id(rule)
-        fallback_message = (
-            _child_text(rule, "description") or _child_text(rule, "test") or "veraPDF rule failed"
+        # Read once per rule, not per check: one rule can fail tens of thousands of times.
+        rule_fields = dict(
+            rule_id=_build_rule_id(rule),
+            specification=rule.attrib.get("specification"),
+            clause=rule.attrib.get("clause"),
+            test_number=rule.attrib.get("testNumber"),
+            description=_child_text(rule, "description"),
         )
+        rule_location = _child_text(rule, "object")
+        fallback_message = rule_fields["description"] or _child_text(rule, "test") or "veraPDF rule failed"
 
         assertions = [
             assertion
@@ -101,50 +107,30 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
         ]
 
         if not assertions:
-            location = _child_text(rule, "object")
-            parsed_issues.append(
-                _issue_from_message(
-                    rule_id=rule_id,
-                    rule=rule,
-                    message=fallback_message,
-                    location=location,
-                )
-            )
+            parsed_issues.append(_issue(rule_fields, fallback_message, rule_location))
             continue
 
         for assertion in assertions:
-            location = _child_text(assertion, "context") or _child_text(assertion, "location")
-            if not location:
-                location = _child_text(rule, "object")
-
+            location = (
+                _child_text(assertion, "context") or _child_text(assertion, "location") or rule_location
+            )
             message = (
                 _child_text(assertion, "errorMessage")
                 or _child_text(assertion, "message")
                 or _child_text(assertion, "description")
                 or fallback_message
             )
-            parsed_issues.append(
-                _issue_from_message(
-                    rule_id=rule_id,
-                    rule=rule,
-                    message=message,
-                    location=location,
-                )
-            )
+            parsed_issues.append(_issue(rule_fields, message, location))
 
     return parsed_issues
 
 
-def _issue_from_message(rule_id: str | None, message: str, location: str | None, rule: ET.Element) -> Issue:
+def _issue(rule_fields: dict, message: str, location: str | None) -> Issue:
     page = _extract_page(" ".join(filter(None, [location, message])))
-    category = _infer_category(" ".join(filter(None, [message, rule_id, location])))
+    category = _infer_category(" ".join(filter(None, [message, rule_fields["rule_id"], location])))
     return Issue(
         severity="error",
-        rule_id=rule_id,
-        specification=rule.attrib.get("specification"),
-        clause=rule.attrib.get("clause"),
-        test_number=rule.attrib.get("testNumber"),
-        description=_child_text(rule, "description"),
+        **rule_fields,
         message=message.strip(),
         page=page,
         location=location,
@@ -197,15 +183,16 @@ def _safe_int(value: str | None) -> int:
         return 0
 
 
+# Both iterate the element itself: copying its children would make a rule with n checks cost n² to parse.
 def _first_child(element: ET.Element, name: str) -> ET.Element | None:
-    for child in list(element):
+    for child in element:
         if _local_name(child.tag) == name:
             return child
     return None
 
 
 def _child_text(element: ET.Element, name: str) -> str | None:
-    for child in list(element):
+    for child in element:
         if _local_name(child.tag) == name:
             text = (child.text or "").strip()
             if text:

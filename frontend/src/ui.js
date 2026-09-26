@@ -31,6 +31,13 @@ export const profileIds = Object.fromEntries(
 );
 export const profileLabel = (profile) => profileLabels[profile] || profile;
 
+// The word for `count` things, e.g. plural(1, "file") is "file".
+export const plural = (count, singular, pluralForm = `${singular}s`) =>
+  count === 1 ? singular : pluralForm;
+// A count with its noun, e.g. "1 file", "2 files".
+export const quantity = (count, singular) =>
+  `${count} ${plural(count, singular)}`;
+
 export const size = (bytes) =>
   bytes < 1048576
     ? `${(bytes / 1024).toFixed(1)} KiB`

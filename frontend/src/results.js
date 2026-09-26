@@ -11,6 +11,7 @@ import {
   outcomeLabel,
   profileIds,
   profileLabel,
+  quantity,
   showError,
   size,
   statusLabel,
@@ -79,13 +80,12 @@ function renderStats() {
     `${total ? (finished / total) * 100 : 0}%`,
   );
   $("progress-indicator").hidden = finished >= total;
-  $("progress-text").textContent = `${finished} of ${total} files processed`;
+  $("progress-text").textContent =
+    `${finished} of ${quantity(total, "file")} processed`;
 }
 
 const pageCount = (count) =>
-  count == null
-    ? "Page count unavailable"
-    : `${count} ${count === 1 ? "page" : "pages"}`;
+  count == null ? "Page count unavailable" : quantity(count, "page");
 
 // A details toggle's glyph and state, from whether the document is expanded.
 function renderToggle(toggle, id) {
@@ -313,8 +313,6 @@ async function toggleDetail(doc, forceOpen = false) {
   }
 }
 
-const files = (count) => `${count} ${count === 1 ? "file" : "files"}`;
-
 // The shared confirmation dialog, set up for one removal. `onConfirm` runs when
 // confirmed; on failure the dialog stays open and the error is shown.
 function confirmRemoval({ title, message, keep, remove, onConfirm }) {
@@ -358,14 +356,14 @@ function confirmDelete(doc) {
 function confirmDeleteAll() {
   confirmRemoval({
     title: "Delete all documents?",
-    message: `This permanently removes ${files(stats.total)} and all reports from your workspace, including files still being validated. Access is removed immediately and this can't be undone.`,
+    message: `This permanently removes ${quantity(stats.total, "file")} and all reports from your workspace, including files still being validated. Access is removed immediately and this can't be undone.`,
     keep: "Keep files",
     remove: "Delete all documents",
     onConfirm: async () => {
       const { deleted } = await api("/documents", { method: "DELETE" });
       expanded.clear();
       detailRows.clear();
-      notify(`${files(deleted)} deleted.`);
+      notify(`${quantity(deleted, "file")} deleted.`);
     },
   });
 }

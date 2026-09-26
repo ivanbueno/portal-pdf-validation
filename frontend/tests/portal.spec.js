@@ -384,13 +384,14 @@ test("one invalid upload does not block other documents or duplicate retries", a
   ]);
   await page.locator("#submit").click();
   await expect(page.locator("#notice")).toContainText(
-    "1 files submitted. 1 files need attention",
+    "1 file submitted. 1 file needs attention; retry the remaining file.",
   );
   await expect(page.locator("#staged-body tr")).toHaveCount(1);
+  await expect(page.locator("#submit")).toHaveText("Retry remaining file");
   expect(creates).toBe(2);
   await page.locator("#submit").click();
   await expect(page.locator("#notice")).toContainText(
-    "0 files submitted. 1 files need attention",
+    "0 files submitted. 1 file needs attention",
   );
   expect(creates).toBe(2);
   await page.locator("#clear").click();
@@ -398,6 +399,69 @@ test("one invalid upload does not block other documents or duplicate retries", a
   await page.reload();
   await expect(page.locator("#results-body")).not.toContainText("invalid.pdf");
   await expect(page.locator("#results-body")).toContainText("independent.pdf");
+});
+
+test("removing staged files that finish out of order removes only those files", async ({
+  page,
+}) => {
+  // Mocked documents whose uploads fail, so each stays staged with a server
+  // document that Remove must check before deleting.
+  const created = new Map(),
+    held = new Map();
+  await page.route("**/api/v1/documents", (route) => {
+    if (route.request().method() !== "POST") return route.fallback();
+    const { name, size, profiles } = route.request().postDataJSON();
+    const id = `mock-${name}`;
+    const origin = new URL(route.request().url()).origin;
+    const doc = {
+      id,
+      name,
+      size,
+      status: "uploading",
+      created: Date.now() / 1000,
+      expires: Date.now() / 1000 + 3600,
+      idempotency_key: id,
+      validation_profiles: profiles,
+      upload_url: `${origin}/mock-upload/${id}`,
+    };
+    created.set(id, doc);
+    return route.fulfill({ status: 201, json: doc });
+  });
+  await page.route("**/mock-upload/*", (route) =>
+    route.fulfill({ status: 500 }),
+  );
+  // Status checks wait until the test releases them, one document at a time.
+  await page.route("**/api/v1/documents/mock-*", async (route) => {
+    const id = new URL(route.request().url()).pathname.split("/").pop();
+    if (route.request().method() === "DELETE")
+      return route.fulfill({ status: 204 });
+    await new Promise((release) => held.set(id, release));
+    return route.fulfill({ json: created.get(id) });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Local workspace")).toBeVisible();
+  await page.locator("#files").setInputFiles(
+    ["a.pdf", "b.pdf", "c.pdf"].map((name) => ({
+      name,
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.7\n"),
+    })),
+  );
+  await page.locator("#submit").click();
+  await expect(page.locator("#notice")).toContainText(
+    "0 files submitted. 3 files need attention",
+  );
+  const rows = page.locator("#staged-body tr");
+  await expect(rows).toHaveCount(3);
+  await expect(rows.first()).toContainText("Upload failed (500)");
+  await page.getByRole("button", { name: "Remove a.pdf" }).click();
+  await page.getByRole("button", { name: "Remove b.pdf" }).click();
+  await expect.poll(() => held.size).toBe(2);
+  held.get("mock-a.pdf")();
+  await expect(rows).toHaveCount(2);
+  held.get("mock-b.pdf")();
+  await expect(rows).toHaveCount(1);
+  await expect(rows).toContainText("c.pdf");
 });
 
 test("delete all documents asks for confirmation first", async ({ page }) => {

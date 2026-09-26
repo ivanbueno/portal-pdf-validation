@@ -1,7 +1,14 @@
 // The expanded validation report beneath a document row.
 import { api, config } from "./api.js";
 import { loadOccurrencePreviews } from "./previews-ui.js";
-import { action, node, outcomeLabel, profileLabel, statusLabel } from "./ui.js";
+import {
+  action,
+  node,
+  outcomeLabel,
+  plural,
+  profileLabel,
+  statusLabel,
+} from "./ui.js";
 
 const ISSUE_PAGE_SIZE = 100;
 // Occurrences shown individually; the rest are summarized by page.
@@ -11,9 +18,6 @@ const NO_ISSUES = {
   error: "Processing did not complete. Review the profile errors.",
   failed: "No issue details were supplied by the validator.",
 };
-
-const plural = (count, singular, pluralForm = `${singular}s`) =>
-  count === 1 ? singular : pluralForm;
 
 function outcome(result, status) {
   if (!result) return statusLabel(status);
@@ -63,7 +67,7 @@ function remainingLocationsSummary(occurrences) {
     ...new Set(occurrences.filter(validPage).map((o) => Number(o.page))),
   ].sort((a, b) => a - b);
   if (!pages.length)
-    return `Similar issue in ${occurrences.length} more locations; page numbers were not supplied.`;
+    return `Similar issue in ${occurrences.length} more ${plural(occurrences.length, "location")}; page numbers were not supplied.`;
   const missing = occurrences.filter((o) => !validPage(o)).length;
   return `Similar issue on pages: ${pages.join(", ")}.${missing ? ` Page number unavailable for ${missing} more ${plural(missing, "location")}.` : ""}`;
 }
