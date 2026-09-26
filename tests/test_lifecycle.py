@@ -1,7 +1,9 @@
 import json
+import sys
 import time
 import pytest
 from azure.core.exceptions import ServiceRequestError
+from portal import cli
 from portal.auth import owner
 from portal.config import MAX_FILE
 from portal.domain import tombstone
@@ -340,3 +342,50 @@ def test_replay_after_submission_does_not_reopen_upload(client, uploaded):
         ).status_code
         == 409
     )
+
+
+@pytest.fixture
+def entry_point(monkeypatch, settings, store):
+    """Runs `cli.run` against the test store with the given command-line flags."""
+    monkeypatch.setattr(cli, "Settings", lambda: settings)
+    monkeypatch.setattr(cli, "Storage", lambda s: store)
+
+    def run(step, *flags):
+        monkeypatch.setattr(sys, "argv", ["pdf-test", *flags])
+        cli.run(step, interval=0)
+
+    return run
+
+
+def test_loop_logs_failed_steps_and_continues(entry_point, monkeypatch):
+    calls, events = [], []
+
+    def step(store, settings):
+        calls.append(len(calls))
+        if len(calls) == 1:
+            raise RuntimeError("private/path.pdf")
+
+    class Stop(BaseException):
+        pass
+
+    def sleep(seconds):
+        if len(calls) == 2:
+            raise Stop()
+
+    monkeypatch.setattr(cli.time, "sleep", sleep)
+    monkeypatch.setattr(
+        cli, "log_event", lambda logger, event, level, **fields: events.append((event, fields))
+    )
+    with pytest.raises(Stop):
+        entry_point(step, "--loop")
+    assert calls == [0, 1]
+    # The exception type only: messages may carry paths or tokens.
+    assert events == [("step_failed", {"step": "step", "type": "RuntimeError"})]
+
+
+def test_single_run_propagates_failures(entry_point):
+    def step(store, settings):
+        raise RuntimeError("Maintenance incomplete")
+
+    with pytest.raises(RuntimeError):
+        entry_point(step)
