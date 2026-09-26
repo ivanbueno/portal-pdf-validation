@@ -91,6 +91,7 @@ button {
   font-size: 0.875rem;
   font-weight: 600;
   min-height: 42px;
+  max-width: 100%;
 }
 button:hover {
   border-color: var(--accent);
@@ -237,7 +238,7 @@ h3 {
   margin-bottom: 14px;
 }
 #workspace > .section-head .eyebrow {
-  color: #5746e8;
+  color: var(--accent);
 }
 #workspace > .section-head .pill {
   display: none;
@@ -464,7 +465,7 @@ h3 {
   );
 }
 .activity > .section-head .eyebrow {
-  color: #5746e8;
+  color: var(--accent);
 }
 .activity > .section-head h2 {
   font-size: 1.8rem;
@@ -798,6 +799,20 @@ dialog::backdrop {
   display: none !important;
 }
 @media (max-width: 720px) {
+  .run-options > summary {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+  .run-options > summary .muted {
+    grid-column: 2;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .run-options > summary::after {
+    grid-column: 3;
+    grid-row: 1;
+    margin-left: 0;
+  }
   main {
     padding: 24px 16px;
   }
@@ -838,6 +853,9 @@ dialog::backdrop {
   }
   .card {
     padding: 22px 18px;
+  }
+  .activity-content {
+    padding: 14px;
   }
   .section-head {
     align-items: start;
@@ -1200,14 +1218,13 @@ button {
 }
 .expanded-report > * {
   min-width: 0;
+  overflow-wrap: anywhere;
 }
 @keyframes detail-enter {
   from {
-    opacity: 0;
     transform: translateY(-6px);
   }
   to {
-    opacity: 1;
     transform: translateY(0);
   }
 }
@@ -1357,14 +1374,18 @@ button {
     padding: 8px;
     border: 0;
     min-width: 0;
+    width: 100%;
   }
   #results .document-row > td:last-child {
     text-align: left;
   }
   #results .detail-row > td {
     display: block;
-    padding: 20px;
+    padding: 12px;
     min-width: 0;
+  }
+  .validation-summary {
+    padding: 14px;
   }
   .expanded-report {
     grid-template-columns: minmax(0, 1fr);

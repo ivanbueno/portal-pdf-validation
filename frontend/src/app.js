@@ -323,9 +323,6 @@ function renderResults() {
     toggle.setAttribute("aria-label", `Validation details for ${d.name}`);
     toggle.setAttribute("aria-expanded", String(expanded.has(d.id)));
     toggle.setAttribute("aria-controls", `details-${d.id}`);
-    tr.tabIndex = 0;
-    tr.setAttribute("aria-expanded", String(expanded.has(d.id)));
-    tr.setAttribute("aria-controls", `details-${d.id}`);
     tr.addEventListener("click", (event) => {
       if (
         event.target.closest(
@@ -333,11 +330,6 @@ function renderResults() {
         )
       )
         return;
-      toggleDetail(d).catch(showError);
-    });
-    tr.addEventListener("keydown", (event) => {
-      if (event.target !== tr || !["Enter", " "].includes(event.key)) return;
-      event.preventDefault();
       toggleDetail(d).catch(showError);
     });
     const info = node("div");

@@ -14,6 +14,8 @@ test("real multi-file uploads, reports, refresh, keyboard dialog, and deletion",
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByText("Local workspace")).toBeVisible();
+  await page.locator(".run-options > summary").click();
+  await page.locator('input[name="profile"][value="pdfua1"]').check();
   await page
     .locator("#files")
     .setInputFiles([
@@ -47,7 +49,10 @@ test("real multi-file uploads, reports, refresh, keyboard dialog, and deletion",
   const popup = await popupPromise;
   await expect(popup).toHaveURL(/\/api\/v1\/documents\/[^/]+\/pdf$/);
   await popup.close();
-  await expect(fail).toContainText("Fail ·", { timeout: 45000 });
+  await expect(fail.locator(".profile-line.failed .profile-state")).toHaveText(
+    "Fail",
+    { timeout: 45000 },
+  );
   await fail
     .getByRole("button", { name: "Validation details for ua-fail.pdf" })
     .click();
@@ -119,11 +124,56 @@ test("mobile layout, dark theme, 200% text, keyboard upload, and upload validati
     "Validation summary",
   );
   await page.evaluate(() => (document.documentElement.style.fontSize = "32px"));
+  const layout = await page.evaluate(() => {
+    const overflowing = [...document.body.querySelectorAll("*")]
+      .map((element) => ({
+        element,
+        rect: element.getBoundingClientRect(),
+      }))
+      .filter(
+        ({ rect }) => rect.left < -1 || rect.right > window.innerWidth + 1,
+      );
+    const overflowingElements = new Set(
+      overflowing.map(({ element }) => element),
+    );
+    const offenders = overflowing
+      .filter(
+        ({ element }) =>
+          ![...element.children].some((child) =>
+            overflowingElements.has(child),
+          ),
+      )
+      .slice(0, 10)
+      .map(({ element, rect }) => ({
+        tag: element.tagName,
+        id: element.id,
+        className: element.className,
+        left: Math.round(rect.left),
+        right: Math.round(rect.right),
+        width: Math.round(rect.width),
+      }));
+    const overflowingContents = [...document.body.querySelectorAll("*")]
+      .filter((element) => element.scrollWidth > element.clientWidth + 1)
+      .map((element) => ({
+        tag: element.tagName,
+        id: element.id,
+        className: element.className,
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+        overflowX: getComputedStyle(element).overflowX,
+      }))
+      .slice(0, 12);
+    return {
+      scrollWidth: document.documentElement.scrollWidth,
+      viewportWidth: window.innerWidth,
+      offenders,
+      overflowingContents,
+    };
+  });
   expect(
-    await page.evaluate(
-      () => document.documentElement.scrollWidth <= window.innerWidth,
-    ),
-  ).toBeTruthy();
+    layout.scrollWidth,
+    JSON.stringify(layout, null, 2),
+  ).toBeLessThanOrEqual(layout.viewportWidth);
   await page.evaluate(() => (document.documentElement.style.fontSize = "16px"));
   const a11y = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
@@ -225,6 +275,8 @@ test("one invalid upload does not block other documents or duplicate retries", a
       creates++;
   });
   await page.goto("/");
+  await page.locator(".run-options > summary").click();
+  await page.locator('input[name="profile"][value="wcag"]').check();
   const fs = await import("node:fs/promises");
   await page.locator("#files").setInputFiles([
     {
