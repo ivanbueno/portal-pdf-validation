@@ -490,6 +490,7 @@ async function poll() {
 }
 $("search").oninput = renderResults;
 $("filter").onchange = renderResults;
+$("refresh").onclick = () => refresh().catch(showError);
 $("load-more").onclick = () => {
   documentLimit += 20;
   refresh().catch(showError);

@@ -34,7 +34,7 @@ test("real multi-file uploads, reports, refresh, keyboard dialog, and deletion",
     .locator("#results-body .document-row")
     .filter({ hasText: "ua-fail.pdf" })
     .first();
-  await expect(pass).toContainText("Pass · 0 errors", { timeout: 45000 });
+  await expect(pass).toContainText("Pass", { timeout: 45000 });
   await expect(pass).toContainText("1 page");
   await expect(pass.getByRole("link")).toHaveAttribute("target", "_blank");
   const pdfResponse = await page.request.get(

@@ -474,6 +474,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 .activity-tools input,
 .activity-tools select {
@@ -489,6 +490,9 @@ h3 {
 }
 .activity-tools select {
   width: min(20vw, 240px);
+}
+.activity-tools > * {
+  min-width: 0;
 }
 .activity-content {
   padding: 24px;
@@ -1193,6 +1197,9 @@ button {
   display: grid;
   grid-template-columns: minmax(180px, 1fr) minmax(0, 2.5fr);
   gap: 28px;
+}
+.expanded-report > * {
+  min-width: 0;
 }
 @keyframes detail-enter {
   from {
