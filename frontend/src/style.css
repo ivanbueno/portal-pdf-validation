@@ -8,25 +8,34 @@
     "Segoe UI",
     sans-serif;
   color-scheme: light dark;
-  color: light-dark(#1b2737, #e5edf8);
-  background: light-dark(#f3f6fa, #101925);
+  color: var(--text);
+  background: light-dark(#faf6ef, #12151c);
   font-size: 16px;
-  --panel: light-dark(#fff, #192334);
-  /* Text tiers, loudest first: body text, --text-2, --muted, --faint. Each
+  /* Warm paper and ink around the origami fox. */
+  --text: light-dark(#1d2433, #f2ece2);
+  --panel: light-dark(#fffdf9, #1b1f29);
+  /* Text tiers, loudest first: --text, --text-2, --muted, --faint. Each
      keeps AA contrast on both --panel and --soft in both themes. */
-  --text-2: light-dark(#34425a, #cbd5e3);
-  --muted: light-dark(#505c6f, #aebcd0);
-  --faint: light-dark(#606c80, #96a4ba);
-  --line: light-dark(#dce3ec, #35445a);
-  --accent: light-dark(#245dab, #93bcff);
-  --soft: light-dark(#edf3fc, #22354f);
-  --good: light-dark(#216d45, #81d5a1);
+  --text-2: light-dark(#474f5e, #d4ccbf);
+  --muted: light-dark(#5b6270, #aba395);
+  --faint: light-dark(#636973, #9d968a);
+  --line: light-dark(#e6ddcf, #353a47);
+  --accent: light-dark(#a8420d, #f39a5f);
+  --soft: light-dark(#f3ebdf, #232835);
+  --good: light-dark(#1c603c, #81d5a1);
   --bad: light-dark(#a4303e, #ffadb5);
-  --warn: light-dark(#8a5300, #f5c46b);
-  --shadow: 0 3px 20px #1b345908;
-  /* The brand blue is the same in both themes, unlike --accent. */
-  --brand: #245dab;
-  --brand-strong: #194b8e;
+  /* Ochre rather than orange, so warnings don't read as the brand. */
+  --warn: light-dark(#7a5a00, #f5c46b);
+  --shadow: 0 3px 20px #3a2a1408;
+  /* The brand rust and the header ink are the same in both themes, unlike --accent. */
+  --brand: #b8480f;
+  --brand-strong: #963a0b;
+  --bar: light-dark(#1d2433, #0b0d12);
+  --bar-text: #f7efe3;
+  --bar-muted: #c9c0b2;
+  --serif:
+    "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia,
+    serif;
   /* Motion: things arrive on --ease-out and leave on --ease-in; --dur-fast
      for small controls, --dur-base for panels and rows, --dur-slow for
      attention cues. Looping indicators keep their own rhythm. */
@@ -123,12 +132,52 @@ button:disabled {
   stroke-linejoin: round;
   vertical-align: middle;
 }
-/* Icons sized to the surface they sit in, rather than to its text. */
-.brand-mark .icon {
-  width: 26px;
-  height: 26px;
-  stroke-width: 2.5;
+/* The origami fox: fixed colors, since the logo is the same in both themes. */
+.logo {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
+.logo .dark {
+  fill: #a33c0c;
+}
+.logo .mid {
+  fill: #d0561a;
+}
+.logo .light {
+  fill: #ec7b36;
+}
+.logo .paper {
+  fill: #f3dcc3;
+}
+.logo .crease {
+  fill: #d7b28c;
+}
+.logo .cheek {
+  fill: #f7e6d3;
+}
+.logo .cheek-shade {
+  fill: #e9cfb4;
+}
+.logo .inner,
+.logo .feature {
+  fill: #1d2433;
+}
+/* Pointing at the logo flicks the folded ear. */
+@media (prefers-reduced-motion: no-preference) {
+  .brand:hover .logo :is(.paper, .crease),
+  .login-brand:hover .logo :is(.paper, .crease) {
+    animation: fox-ear-flick 0.5s cubic-bezier(0.3, 1.5, 0.6, 1);
+    transform-box: view-box;
+    transform-origin: 41px 22px;
+  }
+}
+@keyframes fox-ear-flick {
+  40% {
+    transform: rotate(9deg);
+  }
+}
+/* Icons sized to the surface they sit in, rather than to its text. */
 .upload-icon .icon,
 .options-icon .icon,
 #preview-close .icon {
@@ -180,22 +229,34 @@ header,
   align-items: center;
   gap: 16px;
 }
+/* The ink bar that carries the fox; its controls take light text from it. */
 header {
   justify-content: space-between;
   margin: -22px -10px 20px;
-  padding: 20px 18px;
+  padding: 16px 24px;
+  border: 1px solid light-dark(var(--bar), #2a2f3c);
+  border-radius: 14px;
+  background: var(--bar);
+  color: var(--bar-text);
 }
 .brand-mark {
-  display: grid;
-  place-items: center;
   flex-shrink: 0;
-  background: var(--brand);
-  color: white;
-  border-radius: 12px;
-  width: 46px;
-  height: 52px;
-  font-size: 1.8rem;
-  box-shadow: 0 5px 12px color-mix(in srgb, var(--brand) 15%, transparent);
+  width: 44px;
+  height: 44px;
+}
+/* The wordmark: the product name set in the serif, the tagline in spaced capitals. */
+.brand h1,
+.login-brand .login-product {
+  font-family: var(--serif);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+}
+.brand p,
+.login-brand p:not(.login-product) {
+  font-size: 0.75rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 /* Long names wrap within the header instead of widening it, even at 200% text. */
 .brand > div,
@@ -203,15 +264,13 @@ header {
   min-width: 0;
 }
 .brand h1 {
-  font-size: 1.375rem;
-  letter-spacing: -0.04em;
+  font-size: 1.45rem;
   margin: 0;
   overflow-wrap: anywhere;
 }
 .brand p {
-  font-size: 0.875rem;
-  color: var(--muted);
-  margin: 5px 0 0;
+  color: var(--bar-muted);
+  margin: 4px 0 0;
   overflow-wrap: anywhere;
 }
 .account {
@@ -246,8 +305,11 @@ header {
     background-color var(--dur-fast) var(--ease-out);
 }
 #account-settings-toggle:hover {
-  color: var(--accent);
-  background: var(--soft);
+  color: var(--bar-text);
+  background: rgb(255 255 255 / 12%);
+}
+header :focus-visible {
+  outline-color: var(--bar-text);
 }
 .account-menu {
   position: absolute;
@@ -262,6 +324,7 @@ header {
   border: 1px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 12px 30px rgb(0 0 0 / 18%);
+  color: var(--text);
 }
 .account-menu[hidden] {
   display: none;
@@ -310,8 +373,10 @@ header {
   gap: 8px;
 }
 h2 {
+  font-family: var(--serif);
   font-size: 1.5rem;
-  letter-spacing: -0.035em;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   margin: 6px 0;
 }
 h3 {

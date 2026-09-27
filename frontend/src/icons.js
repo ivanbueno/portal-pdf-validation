@@ -50,10 +50,47 @@ export function icon(name) {
   return svg;
 }
 
-// Fills the page's `data-icon` placeholders, so its markup names icons without repeating their paths.
+// The origami fox logo, folded from one page: flat facets on a 48px grid, no
+// strokes, so it stays crisp down to 16px. The right ear is the page's
+// dog-eared corner. Facet colors come from the `.logo` rules in style.css.
+const FOX = [
+  ["dark", "7 22 6 4 19 16"],
+  ["inner", "9 10 15.5 15.5 9.5 18.5"],
+  ["paper", "41 22 42 4 29 16"],
+  ["crease", "42 4 35.5 10 41 13.5"],
+  ["dark", "7 22 19 16 24 27"],
+  ["mid", "19 16 29 16 24 27"],
+  ["light", "29 16 41 22 24 27"],
+  ["cheek", "7 22 24 27 24 44"],
+  ["cheek-shade", "41 22 24 27 24 44"],
+  ["feature", "13.5 22.8 19.5 24.4 16 26"],
+  ["feature", "34.5 22.8 28.5 24.4 32 26"],
+  ["feature", "20.5 39.5 27.5 39.5 24 44.5"],
+];
+
+// Decorative, like the icons: the product name beside it names the page.
+export function logo() {
+  const svg = document.createElementNS(SVG, "svg");
+  svg.setAttribute("class", "logo");
+  svg.setAttribute("viewBox", "2 2 44 44");
+  svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("focusable", "false");
+  for (const [facet, points] of FOX) {
+    const polygon = document.createElementNS(SVG, "polygon");
+    polygon.setAttribute("class", facet);
+    polygon.setAttribute("points", points);
+    svg.append(polygon);
+  }
+  return svg;
+}
+
+// Fills the page's `data-icon` and `data-logo` placeholders, so its markup
+// names icons without repeating their paths.
 export function renderIcons(root = document) {
   for (const el of root.querySelectorAll("[data-icon]"))
     el.replaceChildren(icon(el.dataset.icon));
+  for (const el of root.querySelectorAll("[data-logo]"))
+    el.replaceChildren(logo());
 }
 
 // Gives an icon-only control its name, and sighted pointer users the same name as a tooltip.

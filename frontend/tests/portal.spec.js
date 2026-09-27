@@ -341,6 +341,15 @@ test("sign-in card covers the workspace and is accessible in light and dark", as
     page.getByRole("heading", { name: "Sign in to your workspace" }),
   ).toBeVisible();
   await expect(page.locator("#signin")).toBeFocused();
+  // The fox logo renders beside the product name, which names it for assistive tech.
+  const logo = page.locator(".login-brand .brand-mark svg.logo");
+  await expect(logo).toBeVisible();
+  await expect(logo).toHaveAttribute("aria-hidden", "true");
+  await expect(logo.locator("polygon")).toHaveCount(12);
+  await expect(page.locator('link[rel="icon"]')).toHaveAttribute(
+    "href",
+    /^data:image\/svg\+xml,/,
+  );
   // The blurred workspace is inert: out of the accessibility tree and unclickable.
   await expect(page.locator("main")).toHaveAttribute("inert", "");
   const light = await new AxeBuilder({ page })

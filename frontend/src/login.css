@@ -42,24 +42,19 @@
   align-items: center;
   gap: 16px;
   padding: 24px 32px;
-  border-bottom: 1px solid var(--line);
-  background-color: var(--soft);
-  background-image: var(--brand-grid);
-  background-size: 8px 8px;
+  background: var(--bar);
+  color: var(--bar-text);
 }
 .login-brand .brand-mark {
-  flex: 0 0 46px;
+  flex: 0 0 44px;
 }
 .login-brand p {
-  margin: 5px 0 0;
-  font-size: 0.875rem;
-  color: var(--muted);
+  margin: 4px 0 0;
+  color: var(--bar-muted);
 }
 .login-brand .login-product {
   margin: 0;
-  font-size: 1.375rem;
-  font-weight: 700;
-  letter-spacing: -0.04em;
+  font-size: 1.45rem;
   color: inherit;
 }
 .login-screen {
@@ -69,7 +64,7 @@
   margin: 8px 0 10px;
   font-size: 1.5rem;
   line-height: 1.2;
-  letter-spacing: -0.035em;
+  letter-spacing: -0.01em;
 }
 .login-lead {
   margin: 0 0 24px;
