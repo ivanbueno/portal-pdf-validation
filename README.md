@@ -1,88 +1,64 @@
-# PDF Validation Portal
+<img src="docs/images/hero.svg" alt="PDF Validation Portal: catch accessibility problems before a PDF goes public. 2 standards checked, 200 files per batch, at most 5 minutes per standard, auto-deleted after 72 hours." width="100%">
 
-A private PDF accessibility validation workspace and asynchronous API built for Azure. FastAPI serves the portal and API; isolated Java/veraPDF jobs validate each uploaded PDF against PDF/UA-1 and the vendored custom WCAG 2.2 profile.
+**Bottom line:** staff drop in PDFs and, within minutes, see whether each one meets **PDF/UA-1** and **WCAG 2.2**, which rule every problem breaks, and where it is in the document. Files stay private to the person who uploaded them and are deleted after 72 hours.
 
-**Automated checks do not establish full accessibility or WCAG conformance. Manual review is required.** This service does not remediate documents.
+> [!WARNING]
+> **A pass is not a sign-off.** Automated checks do not establish full accessibility or WCAG conformance. Manual review is required. This service does not remediate documents.
 
-## Run locally
+## See it
 
-Requirements: Docker Engine with Compose. The local service binds to loopback and uses an explicit development identity; production rejects development authentication.
+![The portal workspace: upload area, workspace totals and the list of checked files](docs/images/dropzone.png)
 
-```sh
-docker compose up --build -d
-```
+Every issue is grouped by standard and clause, with the exact failed check:
 
-Open [the portal](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). The Compose stack includes Azurite, storage initialization, API, worker, and maintenance. First build downloads the checksum-verified veraPDF 1.30.2 installer. Stop with `docker compose down`; append `-v` only to erase local emulator data.
+![An expanded result: WCAG 2.2 passes, PDF/UA-1 fails with one issue, grouped by clause](docs/images/result-details.png)
 
-Limits: 200 files and 2 GiB per portal selection, 200 MiB per file. The API creates one document per request; multi-file selection is coordinated by the portal. Upload reservations expire after one hour. Submitted files and reports become inaccessible after 72 hours. Users can delete them sooner. Cleanup runs every two minutes in Azure (every 30 seconds locally); deletion tombstones persist beyond outstanding upload grants/worker leases to catch late writes.
-
-## Architecture
+## What a result tells you
 
 ```mermaid
 flowchart LR
-    Browser[Staff browser] --> Entra[Microsoft Entra ID / Easy Auth]
-    Client[Approved API client] --> Entra
-    Browser --> API[FastAPI / Azure Container Apps]
-    Client --> API
-    Browser -->|Scoped upload SAS| Blob[Private Blob Storage]
-    Client -->|Scoped upload SAS| Blob
-    API --> Table[Table Storage: ownership and job state]
-    API --> Queue[Storage Queue]
-    Queue --> Worker[Container Apps Jobs: veraPDF]
-    Worker --> Blob
-    Worker --> Table
-    Maintenance[Scheduled reconciliation and cleanup] --> Table
-    Maintenance --> Queue
-    Maintenance --> Blob
+    U([PDF uploaded]) --> V{Checked against<br/>each standard}
+    V -->|Pass| P["✅ No automated issues<br/>→ continue to manual review"]
+    V -->|Fail| F["❌ Issues listed by clause<br/>→ fix the source, re-upload"]
+    V -->|Error| E["⚠️ Could not be processed<br/>(retried up to 3 times)<br/>→ check the file, try again"]
 ```
 
-- Azure Entra Easy Auth handles browser sessions and integration token validation. Visitors without an authorized session see a sign-in card over the blurred, inert workspace shell, which holds no document data; the card appears whenever `/api/session` rejects them. The portal uses server-directed sign-in and the same versioned API as integrations. Upload requests use metadata only; PDFs go directly to Blob Storage. An owner-protected endpoint streams the submitted snapshot for viewing in a new tab.
-- Files upload to private blobs with short-lived, per-blob write grants. Submission checks the actual size/signature and pins an immutable snapshot before queueing. Original filenames are display metadata, never blob paths or shell arguments.
-- ETag claims and attempt-specific report paths prevent duplicate messages, stale workers, and deletion races from publishing the wrong result. Queue delivery is at least once, not exactly once.
-- Each queued document is its own durable outbox. Maintenance retries undispatched work and recovers expired worker leases. Maximum three processing attempts for infrastructure failures; deterministic validation failures are not retried.
-- Every file produces separate profile results. A processing error is distinct from a nonconforming PDF, and a successful profile report survives another profile's failure.
-- Fast portal polls read only active metadata; document lists use stable cursors, and new report pages read only their intersecting stored chunks. Full JSON/XML downloads stream from storage. Exact workspace totals and filename filtering still require scanning live metadata for the owner.
-- One worker processes one PDF and runs profiles sequentially. Azure starts with at most four executions, each 2 vCPU/4 GiB, a 2 GiB JVM heap, five minutes per profile, and a 20 MiB combined stdout/stderr limit per profile.
+A processing error is never reported as a failing PDF, and each standard gets its own result.
 
-## Develop and verify
+## Questions leaders ask
 
-```sh
-python3.12 -m venv .venv
-. .venv/bin/activate
-pip install -r requirements.lock
-pip install --no-deps -e .
-npm ci --prefix frontend
-npm run build --prefix frontend
-cp .env.example .env
-# Set PDF_VERAPDF_JAR in .env to the official installed CLI jar.
-docker compose up -d azurite
-python scripts/init_storage.py
-uvicorn portal.app:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
-# Separate terminals: pdf-worker --loop; pdf-maintenance --loop
-```
+<details>
+<summary><b>Is our content safe?</b></summary>
 
-For frontend hot reload, run `npm run dev --prefix frontend` and use `http://127.0.0.1:5173`. Stop the Compose API first if using the Python API on port 8000. The frontend supports Chrome and Edge 123, Safari 17.5, and Firefox 120 or later: its colors use CSS `light-dark()`, and its scripts target ES2022.
+Staff sign in with Microsoft Entra ID and see only their own documents. PDFs upload straight into private Azure storage with a short-lived grant for that one file, and an exact copy is frozen before it is checked. Everything becomes inaccessible after 72 hours; users can delete it sooner. [How it works →](docs/how-it-works.md#security)
+</details>
 
-```sh
-ruff check src tests scripts
-ruff format --check src tests scripts
-pytest -q -m 'not integration'
-RUN_AZURE_INTEGRATION=1 pytest -q -m integration
-cd frontend
-npx playwright install chromium
-npm test
-```
+<details>
+<summary><b>How much can it handle?</b></summary>
 
-The real-engine tests skip when `PDF_VERAPDF_JAR` is unavailable. The emulator test requires running Azurite and a real engine. CI runs the application tests inside the production Python 3.12/Java container, plus emulator and browser acceptance tests. See [verification results](docs/verification.md) for what was actually run in this workspace.
+Up to 200 files (2 GiB) per upload from the browser, 200 MiB per file. By default four validations run at once, each in its own isolated job, with a five-minute limit per standard. [Capacity →](docs/how-it-works.md#performance-and-capacity)
+</details>
 
-## Deploy
+<details>
+<summary><b>Can other systems use it?</b></summary>
 
-See [Azure deployment](docs/azure-ci.md) for Entra registration, infrastructure, permissions, OIDC deployment, observability, and smoke tests. Deployment templates and workflows are included; no Azure resources are provisioned by creating this project.
+Yes. The portal itself uses the same versioned API that approved integrations call. See the [API guide](docs/api.md), the [Python client](scripts/validate.py), and [external client setup](docs/azure-api.md).
+</details>
 
-See [API guide](docs/api.md), [Python client](scripts/validate.py), and [attribution](licenses/NOTICE.md).
+<details>
+<summary><b>What does it take to deploy?</b></summary>
 
-## Document results
+An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure Container Apps, Storage and monitoring, then deploys. Creating this project provisions nothing by itself. [Azure resources →](docs/how-it-works.md#azure-resources) · [Deploy to Azure →](docs/azure-ci.md)
+</details>
 
-Filename links open the submitted PDF in a new tab. Each row shows submission date, page count, and separate PDF/UA-1 and WCAG outcomes/error counts. Expand the chevron for issues consolidated by specification, clause, and test, including profile badges and individual check locations. The split report button downloads JSON; its dropdown offers per-profile XML, details, and deletion.
+<details>
+<summary><b>How do we know it works?</b></summary>
 
-New validations collect page counts using [veraPDF page feature extraction](https://docs.verapdf.org/cli/feature-extraction/) within the existing process timeout and output bounds. Older reports without page metadata display “Page count unavailable.”
+The [verification record](docs/verification.md) lists every test run, including automated accessibility checks of the portal, and what hasn't been run in Azure yet.
+</details>
+
+## Go deeper
+
+**[Using the portal](docs/user-guide.md)** · **[How it works](docs/how-it-works.md)** · **[Development and testing](docs/development.md)** · **[API guide](docs/api.md)** · **[Deploy to Azure](docs/azure-ci.md)** ([manual](docs/azure-manual.md)) · **[Verification](docs/verification.md)** · [Attribution](licenses/NOTICE.md)
+
+Engineers can try it locally with `docker compose up --build -d`, then open http://127.0.0.1:8000.
