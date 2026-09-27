@@ -26,8 +26,14 @@ function saveTheme(theme) {
 export function initTheme(...buttons) {
   let theme = savedTheme();
   function apply() {
-    if (theme === "system") delete document.documentElement.dataset.theme;
-    else document.documentElement.dataset.theme = theme;
+    const root = document.documentElement;
+    // Colors switch at once: a transition would fade each element through
+    // low-contrast in-between colors on its own schedule.
+    root.classList.add("theme-switching");
+    if (theme === "system") delete root.dataset.theme;
+    else root.dataset.theme = theme;
+    getComputedStyle(root).color; // Applies the new colors while transitions are off.
+    root.classList.remove("theme-switching");
     for (const button of buttons)
       setIconLabel(button, THEME_ICONS[theme], `Theme: ${theme}`);
   }
