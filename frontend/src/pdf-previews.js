@@ -1,8 +1,7 @@
 // Page previews for veraPDF issue occurrences: locate the failing region, then
 // render its page with the region boxed.
 import {
-  cached,
-  loadDocument,
+  withDocument,
   markedContentRects,
   pageAnnotations,
 } from "./pdf-document.js";
@@ -33,13 +32,14 @@ const LOCATORS = [explicitRegion, contentItemRegion, structureBounds];
 
 // Form fields: veraPDF names the widget object, which pdf.js exposes as an
 // annotation ID. Searches the reported page, or every page when there is none.
-async function annotationRegion(source, occurrence, reportedPage) {
+async function annotationRegion(source, occurrence, reportedPage, signal) {
   const refs = objectNumbers(occurrence.location)
     .map(([number]) => `${number}R`)
     .reverse();
   if (!refs.length) return null;
   const last = reportedPage || source.pdf.numPages;
   for (let page = reportedPage || 1; page <= last; page++) {
+    signal.throwIfAborted();
     const annotations = await pageAnnotations(source, page);
     const annotation = refs
       .map((ref) =>
@@ -55,18 +55,19 @@ async function annotationRegion(source, occurrence, reportedPage) {
   return null;
 }
 
-async function locate(source, occurrence) {
+async function locate(source, occurrence, signal) {
   const reported = Number(occurrence.page);
   const reportedPage =
     Number.isInteger(reported) && reported > 0 ? reported : null;
   for (const locator of LOCATORS) {
+    signal.throwIfAborted();
     const region = await locator(source, occurrence).catch(() => null);
     // A region without a usable page keeps the page veraPDF reported.
     if (region)
       return { page: region.page || reportedPage, rects: region.rects };
   }
   return (
-    (await annotationRegion(source, occurrence, reportedPage)) || {
+    (await annotationRegion(source, occurrence, reportedPage, signal)) || {
       page: reportedPage,
       rects: [],
     }
@@ -77,15 +78,27 @@ async function locate(source, occurrence) {
 export const occurrenceKey = (occurrence) =>
   JSON.stringify([occurrence.page, occurrence.location, occurrence.message]);
 
-async function renderPage(pdf, pageNumber, rects, width) {
+async function renderPage(pdf, pageNumber, rects, width, signal) {
   const page = await pdf.getPage(pageNumber);
+  signal.throwIfAborted();
   const base = page.getViewport({ scale: 1 });
   const viewport = page.getViewport({ scale: width / base.width });
   const canvas = document.createElement("canvas");
   canvas.width = Math.ceil(viewport.width);
   canvas.height = Math.ceil(viewport.height);
   const context = canvas.getContext("2d", { alpha: false });
-  await page.render({ canvas, canvasContext: context, viewport }).promise;
+  const task = page.render({ canvas, canvasContext: context, viewport });
+  const cancel = () => task.cancel();
+  signal.addEventListener("abort", cancel, { once: true });
+  try {
+    await task.promise;
+    signal.throwIfAborted();
+  } catch (error) {
+    canvas.width = canvas.height = 0;
+    throw error;
+  } finally {
+    signal.removeEventListener("abort", cancel);
+  }
   context.strokeStyle = HIGHLIGHT;
   context.lineWidth = Math.max(
     3,
@@ -122,22 +135,53 @@ async function encode(canvas) {
 export async function renderOccurrencePreview(
   docId,
   occurrence,
-  fetchPdf,
   width,
+  signal,
 ) {
-  const source = await loadDocument(docId, fetchPdf);
-  // Located once per occurrence: the thumbnail and enlarged renders share it.
-  const { page, rects } = await cached(
-    source.regions,
-    occurrenceKey(occurrence),
-    () => locate(source, occurrence),
-  );
-  if (!page || page < 1 || page > source.pdf.numPages)
-    throw new Error("No page could be matched to this veraPDF location");
-  const canvas = await renderPage(source.pdf, page, rects, width);
-  return {
-    src: await encode(canvas),
-    page,
-    precise: rects.some(validRect),
-  };
+  return withDocument(docId, signal, async (source) => {
+    const key = `${occurrenceKey(occurrence)}:${width}`;
+    const existing = source.previews.get(key);
+    if (existing) {
+      source.previews.delete(key);
+      source.previews.set(key, existing);
+      return existing;
+    }
+    // Located once per occurrence: the thumbnail and enlarged renders share it.
+    // Location work belongs to this operation; don't share its cancellation with
+    // another consumer. Cache only completed locations.
+    const locationKey = occurrenceKey(occurrence);
+    const { page, rects } =
+      source.regions.get(locationKey) ||
+      (await locate(source, occurrence, signal));
+    signal.throwIfAborted();
+    source.regions.delete(locationKey);
+    source.regions.set(locationKey, { page, rects });
+    while (source.regions.size > 100)
+      source.regions.delete(source.regions.keys().next().value);
+    if (!page || page < 1 || page > source.pdf.numPages)
+      throw new Error("No page could be matched to this veraPDF location");
+    const canvas = await renderPage(source.pdf, page, rects, width, signal);
+    try {
+      const image = {
+        src: await encode(canvas),
+        page,
+        precise: rects.some(validRect),
+      };
+      signal.throwIfAborted();
+      source.previews.set(key, image);
+      // Bound retained strings by both count and approximate UTF-16 storage size.
+      let bytes = [...source.previews.values()].reduce(
+        (sum, value) => sum + value.src.length * 2,
+        0,
+      );
+      while (source.previews.size > 24 || bytes > 16 * 1024 * 1024) {
+        const oldest = source.previews.keys().next().value;
+        bytes -= source.previews.get(oldest).src.length * 2;
+        source.previews.delete(oldest);
+      }
+      return image;
+    } finally {
+      canvas.width = canvas.height = 0;
+    }
+  });
 }

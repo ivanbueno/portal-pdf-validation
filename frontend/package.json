@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build",
-    "test": "playwright test",
+    "test": "npm run test:unit && playwright test",
+    "test:unit": "node --test tests/*.unit.js",
     "format": "prettier --write src tests *.js index.html",
     "format:check": "prettier --check src tests *.js index.html"
   },

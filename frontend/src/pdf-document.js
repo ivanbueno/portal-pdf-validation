@@ -1,44 +1,59 @@
-// The PDF loaded for previews, with its per-page caches. Only one document is
-// kept: previews are requested for one expanded report at a time.
+// Document sessions own PDF workers, source bytes, and bounded per-page caches.
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { PDFDocument } from "@cantoo/pdf-lib";
 import { validRect } from "./pdf-geometry.js";
+import { documentSessions } from "./pdf-sessions.js";
+import { api } from "./api.js";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-let current;
-
-// Resolves to a source: { docId, pdf, data, markedContent, annotations, regions, structure }.
-export function loadDocument(docId, fetchPdf) {
-  if (current?.docId === docId) return current.source;
-  // pdf.js 6 removed PDFDocumentProxy.destroy(); the loading task owns cleanup.
-  // A document still loading is left to finish for the previews awaiting it.
-  const previous = current?.loaded;
-  const entry = (current = { docId, loaded: null });
-  entry.source = (async () => {
-    await previous?.pdf.loadingTask.destroy();
-    const blob = await fetchPdf(docId);
+export const withDocument = documentSessions((docId) => {
+  const controller = new AbortController();
+  const { signal } = controller;
+  let task, source;
+  const ready = (async () => {
+    const blob = await api(`/documents/${docId}/pdf`, {
+      download: true,
+      signal,
+    });
     const data = new Uint8Array(await blob.arrayBuffer());
+    signal.throwIfAborted();
     // pdf.js takes ownership of the bytes it is given, so it gets a copy.
-    const pdf = await pdfjs.getDocument({ data: data.slice() }).promise;
-    const source = {
+    task = pdfjs.getDocument({ data: data.slice() });
+    const pdf = await task.promise;
+    signal.throwIfAborted();
+    source = {
       docId,
       pdf,
       data,
       markedContent: new Map(),
       annotations: new Map(),
       regions: new Map(),
+      previews: new Map(),
       structure: null,
     };
-    if (current === entry) entry.loaded = source;
     return source;
   })();
-  entry.source.catch(() => {
-    if (current === entry) current = undefined;
-  });
-  return entry.source;
-}
+  return {
+    ready,
+    async close() {
+      controller.abort();
+      await task?.destroy();
+      if (source) {
+        for (const key of [
+          "markedContent",
+          "annotations",
+          "regions",
+          "previews",
+        ])
+          source[key].clear();
+        source.data = null;
+        source.structure = null;
+      }
+    },
+  };
+});
 
 // The raw object graph (pdf-lib), parsed on first use for structure lookups.
 // The empty password decrypts files that only restrict permissions, whose
@@ -81,13 +96,19 @@ async function scanMarkedContent(pdf, pageNumber) {
 }
 
 // The promise `compute()` returns, cached under `key`; a failure is evicted so it can retry.
-export function cached(cache, key, compute) {
+export function cached(cache, key, compute, limit = 32) {
   if (!cache.has(key)) {
     const result = compute();
-    result.catch(() => cache.delete(key));
+    result.catch(() => {
+      if (cache.get(key) === result) cache.delete(key);
+    });
     cache.set(key, result);
   }
-  return cache.get(key);
+  const result = cache.get(key);
+  cache.delete(key);
+  cache.set(key, result);
+  while (cache.size > limit) cache.delete(cache.keys().next().value);
+  return result;
 }
 
 // Text rectangles grouped by marked-content ID (MCID), scanned once per page.

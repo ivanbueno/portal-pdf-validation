@@ -93,14 +93,22 @@ function remainingLocationsSummary(occurrences) {
   return `Similar issue on pages: ${pages.join(", ")}.${missing ? ` Page number unavailable for ${missing} more ${plural(missing, "location")}.` : ""}`;
 }
 
-function renderOccurrences(group, docId) {
+function renderOccurrences(group, docId, signal) {
   const occurrences = node("details", undefined, "occurrences");
   const previewContainers = [];
+  let previews;
+  signal.addEventListener("abort", () => previews?.abort(), { once: true });
   occurrences.addEventListener("toggle", () => {
-    if (occurrences.open)
-      loadOccurrencePreviews(previewContainers, docId, group.occurrences).catch(
-        () => {},
-      );
+    previews?.abort();
+    if (occurrences.open && !signal.aborted) {
+      previews = new AbortController();
+      loadOccurrencePreviews(
+        previewContainers,
+        docId,
+        group.occurrences,
+        previews.signal,
+      ).catch(() => {});
+    }
   });
   occurrences.append(
     node("summary", `${group.count} failed ${plural(group.count, "check")}`),
@@ -148,7 +156,7 @@ function tagBadge(kind, value, className) {
   return badge;
 }
 
-function renderIssueGroup(group, docId) {
+function renderIssueGroup(group, docId, signal) {
   const issue = node("article", undefined, "grouped-issue");
   const identity = node("div", undefined, "issue-identity");
   identity.append(
@@ -178,7 +186,7 @@ function renderIssueGroup(group, docId) {
   const body = node("div");
   body.append(node("p", group.message, "issue-description"));
   if (group.specification) body.append(node("p", group.specification, "muted"));
-  body.append(renderOccurrences(group, docId));
+  body.append(renderOccurrences(group, docId, signal));
   issue.append(identity, body);
   return issue;
 }
@@ -218,7 +226,7 @@ export async function loadDetail(doc, row, offset = 0) {
         ),
       );
     for (const group of groups.items)
-      violations.append(renderIssueGroup(group, doc.id));
+      violations.append(renderIssueGroup(group, doc.id, signal));
     const nav = node("div", undefined, "downloads");
     if (offset)
       nav.append(

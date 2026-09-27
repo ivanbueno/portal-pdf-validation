@@ -1,29 +1,17 @@
 // Page-preview thumbnails for issue locations and the enlarged preview dialog.
-import { api } from "./api.js";
-import { cached } from "./pdf-document.js";
 import { isDocumentLevel } from "./pdf-locations.js";
-import { occurrenceKey, renderOccurrencePreview } from "./pdf-previews.js";
+import { renderOccurrencePreview } from "./pdf-previews.js";
 import { $, node } from "./ui.js";
 
 const THUMBNAIL_WIDTH = 320;
 const ENLARGED_WIDTH = 1100;
-// Rendered previews of the last previewed document. Like its loaded PDF, one
-// document's previews are kept; images already on screen keep their own data.
-let cache = { docId: null, previews: new Map() };
-
-const fetchPdf = (id) => api(`/documents/${id}/pdf`, { download: true });
-// Rendered previews are cached per size; failures are evicted so they can retry.
-function cachedPreview(docId, occurrence, width) {
-  if (cache.docId !== docId) cache = { docId, previews: new Map() };
-  const { previews } = cache;
-  return cached(previews, `${occurrenceKey(occurrence)}:${width}`, () =>
-    renderOccurrencePreview(docId, occurrence, fetchPdf, width),
-  );
-}
+let dialogRequest = 0,
+  dialogController,
+  detachOwner;
 const previewAlt = (image) =>
   `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;
 
-function thumbnailButton(docId, occurrence, image) {
+function thumbnailButton(docId, occurrence, image, signal) {
   const button = node("button", undefined, "preview-thumb");
   button.type = "button";
   button.setAttribute(
@@ -34,12 +22,31 @@ function thumbnailButton(docId, occurrence, image) {
   thumbnail.src = image.src;
   thumbnail.alt = previewAlt(image);
   button.append(thumbnail);
-  button.onclick = () => openPreview(docId, occurrence, image);
+  button.onclick = () => openPreview(docId, occurrence, image, signal);
   return button;
 }
 
-export async function loadOccurrencePreviews(previews, docId, occurrences) {
+export async function loadOccurrencePreviews(
+  previews,
+  docId,
+  occurrences,
+  signal,
+) {
+  if (signal.aborted) return;
+  signal.addEventListener(
+    "abort",
+    () => {
+      for (const preview of previews) {
+        delete preview.dataset.previewsLoaded;
+        preview.replaceChildren();
+        preview.textContent = "Open locations to load page preview.";
+        preview.classList.add("muted");
+      }
+    },
+    { once: true },
+  );
   for (const [index, preview] of previews.entries()) {
+    if (signal.aborted || !preview.isConnected) return;
     if (preview.dataset.previewsLoaded) continue;
     preview.dataset.previewsLoaded = "true";
     const occurrence = occurrences[index];
@@ -51,13 +58,20 @@ export async function loadOccurrencePreviews(previews, docId, occurrences) {
     }
     preview.textContent = "Loading page preview…";
     try {
-      const image = await cachedPreview(docId, occurrence, THUMBNAIL_WIDTH);
+      const image = await renderOccurrencePreview(
+        docId,
+        occurrence,
+        THUMBNAIL_WIDTH,
+        signal,
+      );
+      if (signal.aborted || !preview.isConnected) return;
       preview.classList.remove("muted");
       preview.replaceChildren(
-        thumbnailButton(docId, occurrence, image),
+        thumbnailButton(docId, occurrence, image, signal),
         node("span", `Page ${image.page}`, "muted preview-caption"),
       );
     } catch (error) {
+      if (signal.aborted) return;
       delete preview.dataset.previewsLoaded;
       preview.textContent = "PDF page preview unavailable.";
       preview.title = error instanceof Error ? error.message : String(error);
@@ -70,7 +84,26 @@ export async function loadOccurrencePreviews(previews, docId, occurrences) {
   }
 }
 
-async function openPreview(docId, occurrence, thumbnail) {
+function cancelDialogRequest() {
+  dialogRequest++;
+  dialogController?.abort();
+  detachOwner?.();
+  detachOwner = undefined;
+  $("preview-image").removeAttribute("src");
+}
+
+function closePreview() {
+  cancelDialogRequest();
+  $("preview-dialog").close();
+}
+
+async function openPreview(docId, occurrence, thumbnail, ownerSignal) {
+  if (ownerSignal.aborted) return;
+  cancelDialogRequest();
+  const token = dialogRequest;
+  const controller = (dialogController = new AbortController());
+  ownerSignal.addEventListener("abort", closePreview, { once: true });
+  detachOwner = () => ownerSignal.removeEventListener("abort", closePreview);
   const dialog = $("preview-dialog");
   $("preview-title").textContent =
     `PDF page ${thumbnail.page} · ${occurrence.message}`;
@@ -80,22 +113,32 @@ async function openPreview(docId, occurrence, thumbnail) {
   dialog.showModal();
   $("preview-close").focus();
   try {
-    const image = await cachedPreview(docId, occurrence, ENLARGED_WIDTH);
-    if (!dialog.open) return;
+    const image = await renderOccurrencePreview(
+      docId,
+      occurrence,
+      ENLARGED_WIDTH,
+      controller.signal,
+    );
+    if (!dialog.open || token !== dialogRequest) return;
     $("preview-image").src = image.src;
     $("preview-image").alt = previewAlt(image);
     $("preview-note").textContent = image.precise
       ? "Red box uses the coordinates or form annotation bounds identified by veraPDF."
       : "No precise coordinates could be derived from this veraPDF location; the page is shown without a highlight.";
   } catch {
-    if (dialog.open)
+    if (dialog.open && token === dialogRequest)
       $("preview-note").textContent =
         "Could not load the enlarged PDF preview.";
   }
 }
 
 export function initPreviewDialog() {
-  $("preview-close").onclick = () => $("preview-dialog").close();
+  $("preview-close").onclick = closePreview;
+  $("preview-dialog").addEventListener("cancel", cancelDialogRequest);
+  $("preview-dialog").addEventListener("close", () => {
+    // A queued close event from the previous view must not cancel a new view.
+    if (!$("preview-dialog").open) cancelDialogRequest();
+  });
   // Close on backdrop clicks, which land on the dialog outside its content box.
   $("preview-dialog").addEventListener("click", (event) => {
     const dialog = event.currentTarget;
@@ -107,6 +150,6 @@ export function initPreviewDialog() {
         event.clientY < bounds.top ||
         event.clientY > bounds.bottom)
     )
-      dialog.close();
+      closePreview();
   });
 }
