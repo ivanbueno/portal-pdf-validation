@@ -1,6 +1,6 @@
 // The document table, summary cards, batch progress, and polling.
 import { api, config, download } from "./api.js";
-import { loadDetail } from "./detail.js";
+import { cancelDetail, loadDetail, refreshDetail } from "./detail.js";
 import {
   $,
   ACTIVE,
@@ -26,7 +26,7 @@ let documents = [],
   progressDocumentIds = new Set(),
   // JSON of the last rendered rows; unchanged polls skip the DOM rebuild.
   renderedSignature = "",
-  refreshSequence = 0,
+  refreshController,
   pollDelay = 2500,
   pollTimer,
   searchTimer;
@@ -219,6 +219,7 @@ function renderRow(d, openMenus) {
   detail.hidden =
     !expanded.has(d.id) && !detail.classList.contains("detail-closing");
   detailRows.set(d.id, detail);
+  if (expanded.has(d.id)) refreshDetail(d, detail);
   return [tr, detail];
 }
 
@@ -233,6 +234,12 @@ function renderResults() {
   const signature = JSON.stringify(documents);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
+  const visible = new Set(documents.map((doc) => doc.id));
+  for (const [id, row] of detailRows) {
+    if (visible.has(id)) continue;
+    cancelDetail(row);
+    detailRows.delete(id);
+  }
   const focused = document.activeElement;
   const openMenus = new Set(
     [...document.querySelectorAll(".action-dropdown[open]")].map(
@@ -247,8 +254,16 @@ function renderResults() {
     document.getElementById(focused.id)?.focus({ preventScroll: true });
 }
 
+function cancelRefresh() {
+  clearTimeout(pollTimer);
+  refreshController?.abort();
+}
+
 export async function refresh() {
-  const sequence = ++refreshSequence;
+  cancelRefresh();
+  clearTimeout(searchTimer);
+  const controller = (refreshController = new AbortController());
+  const { signal } = controller;
   const params = new URLSearchParams({
     q: $("search").value.trim(),
     status: $("filter").value,
@@ -256,35 +271,43 @@ export async function refresh() {
   // Fetch only the rows on screen; summary cards use server-wide totals.
   const collected = [];
   let data;
-  do {
-    params.set("offset", collected.length);
-    params.set(
-      "limit",
-      Math.min(config.maxFiles, documentLimit - collected.length),
+  try {
+    do {
+      params.set("offset", collected.length);
+      params.set(
+        "limit",
+        Math.min(config.maxFiles, documentLimit - collected.length),
+      );
+      data = await api(`/documents?${params}`, { signal });
+      if (signal.aborted) return;
+      collected.push(...data.items);
+    } while (
+      data.items.length &&
+      collected.length < Math.min(documentLimit, data.matching)
     );
-    data = await api(`/documents?${params}`);
-    collected.push(...data.items);
-  } while (
-    data.items.length &&
-    collected.length < Math.min(documentLimit, data.matching)
-  );
-  // A slower, older request (e.g. a poll racing a search) must not win.
-  if (sequence !== refreshSequence) return;
-  documents = collected;
-  stats = data;
-  $("load-more").hidden = data.matching <= documentLimit;
-  $("delete-all").hidden = !data.total;
-  renderResults();
+    documents = collected;
+    stats = data;
+    $("load-more").hidden = data.matching <= documentLimit;
+    $("delete-all").hidden = !data.total;
+    renderResults();
+    pollDelay = stats.active_ids.length ? 2500 : 15000;
+  } catch (error) {
+    if (signal.aborted) return;
+    pollDelay = Math.min(pollDelay * 2, 60000);
+    throw error;
+  } finally {
+    // Only the latest request owns the next poll, including after reconnects.
+    if (!signal.aborted) {
+      refreshController = undefined;
+      pollTimer = setTimeout(poll, pollDelay);
+    }
+  }
 }
 
-export async function poll() {
-  try {
-    if (document.visibilityState === "visible") {
-      await refresh();
-      pollDelay = stats.active_ids.length ? 2500 : 15000;
-    }
-  } catch {
-    pollDelay = Math.min(pollDelay * 2, 60000);
+export function poll() {
+  cancelRefresh();
+  if (document.visibilityState === "visible") {
+    return refresh().catch(() => {});
   }
   pollTimer = setTimeout(poll, pollDelay);
 }
@@ -298,6 +321,7 @@ async function toggleDetail(doc, forceOpen = false) {
   renderToggle(document.getElementById(`toggle-${doc.id}`), doc.id);
   const detail = detailRows.get(doc.id);
   if (closing) {
+    cancelDetail(detail);
     detail.classList.add("detail-closing");
     afterAnimation(detail, "detail-exit", () => {
       if (expanded.has(doc.id)) return;
@@ -362,6 +386,7 @@ function confirmDelete(doc) {
     onConfirm: async () => {
       await api(`/documents/${doc.id}`, { method: "DELETE" });
       expanded.delete(doc.id);
+      cancelDetail(detailRows.get(doc.id));
       detailRows.delete(doc.id);
       notify("File deleted.");
     },
@@ -377,6 +402,7 @@ function confirmDeleteAll() {
     onConfirm: async () => {
       const { deleted } = await api("/documents", { method: "DELETE" });
       expanded.clear();
+      for (const row of detailRows.values()) cancelDetail(row);
       detailRows.clear();
       notify(`${quantity(deleted, "file")} deleted.`);
     },
@@ -395,6 +421,7 @@ export function initResults() {
   );
   renderProfileStats();
   $("search").oninput = () => {
+    cancelRefresh();
     clearTimeout(searchTimer);
     searchTimer = setTimeout(() => refresh().catch(showError), 250);
   };
@@ -417,8 +444,5 @@ export function initResults() {
         menu.querySelector("summary").focus();
       });
   });
-  window.addEventListener("online", () => {
-    clearTimeout(pollTimer);
-    poll();
-  });
+  window.addEventListener("online", poll);
 }

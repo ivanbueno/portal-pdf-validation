@@ -19,6 +19,27 @@ const NO_ISSUES = {
   failed: "No issue details were supplied by the validator.",
 };
 
+// State belongs to the reused detail row, including its current issues page.
+const details = new WeakMap();
+const revision = (doc) =>
+  JSON.stringify([
+    doc.status,
+    doc.profiles,
+    doc.error,
+    doc.expires,
+    doc.attempts,
+  ]);
+
+export function cancelDetail(row) {
+  details.get(row)?.controller.abort();
+}
+
+export function refreshDetail(doc, row) {
+  const previous = details.get(row);
+  if (previous?.revision === revision(doc)) return;
+  return loadDetail(doc, row, previous?.offset ?? 0);
+}
+
 function outcome(result, status) {
   if (!result) return statusLabel(status);
   if (result.status === "error") return statusLabel("error");
@@ -82,10 +103,7 @@ function renderOccurrences(group, docId) {
       );
   });
   occurrences.append(
-    node(
-      "summary",
-      `${group.count} failed ${plural(group.count, "check")}`,
-    ),
+    node("summary", `${group.count} failed ${plural(group.count, "check")}`),
   );
   for (const occurrence of group.occurrences.slice(0, LISTED_OCCURRENCES)) {
     const item = node("div", undefined, "issue-location");
@@ -167,6 +185,10 @@ function renderIssueGroup(group, docId) {
 
 export async function loadDetail(doc, row, offset = 0) {
   if (!row) return;
+  cancelDetail(row);
+  const controller = new AbortController();
+  const { signal } = controller;
+  details.set(row, { controller, offset, revision: revision(doc) });
   const cell = node("td");
   cell.colSpan = 3;
   const content = node("div", undefined, "expanded-report");
@@ -181,7 +203,9 @@ export async function loadDetail(doc, row, offset = 0) {
     // the issue groups need the stored report.
     const groups = await api(
       `/documents/${doc.id}/issues?offset=${offset}&limit=${ISSUE_PAGE_SIZE}`,
+      { signal },
     );
+    if (signal.aborted) return;
     const violations = node("section", undefined, "grouped-issues");
     violations.append(node("h3", `Accessibility issues (${groups.total})`));
     if (!groups.total)
@@ -211,6 +235,7 @@ export async function loadDetail(doc, row, offset = 0) {
     violations.append(nav, node("p", config.disclaimer, "muted"));
     content.replaceChildren(renderSummary(doc), violations);
   } catch (error) {
+    if (signal.aborted) return;
     content.replaceChildren(
       node("p", error.message, "error"),
       action("Retry details", () => loadDetail(doc, row, offset)),
