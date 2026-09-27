@@ -1,6 +1,6 @@
 // Bounds from the structure tree: veraPDF names a structure element, and the
 // marked content it owns gives the region to highlight.
-import { PDFArray, PDFDict, PDFName, PDFNumber, PDFRef } from "pdf-lib";
+import { PDFArray, PDFDict, PDFName, PDFNumber, PDFRef } from "@cantoo/pdf-lib";
 import { markedContentRects, structure } from "./pdf-document.js";
 import { unionRects } from "./pdf-geometry.js";
 import { objectNumbers } from "./pdf-locations.js";

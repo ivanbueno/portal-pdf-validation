@@ -2,7 +2,7 @@
 // kept: previews are requested for one expanded report at a time.
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { PDFDocument } from "pdf-lib";
+import { PDFDocument } from "@cantoo/pdf-lib";
 import { validRect } from "./pdf-geometry.js";
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
@@ -41,9 +41,12 @@ export function loadDocument(docId, fetchPdf) {
 }
 
 // The raw object graph (pdf-lib), parsed on first use for structure lookups.
+// The empty password decrypts files that only restrict permissions, whose
+// structure trees are otherwise unreadable; unencrypted files ignore it.
 export function structure(source) {
   source.structure ||= PDFDocument.load(source.data.slice(), {
     updateMetadata: false,
+    password: "",
   });
   return source.structure;
 }
