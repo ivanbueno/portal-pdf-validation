@@ -37,11 +37,22 @@ function scheduleNoticeFade(notice, delay) {
   };
 }
 
+// Pins the notice just under the header, aligned to its right edge; once the
+// header has scrolled away the notice falls back to the viewport's top corner.
+function placeNotice(notice) {
+  const header = document
+    .querySelector("main > header")
+    .getBoundingClientRect();
+  notice.style.top = `${Math.max(20, header.bottom + 12)}px`;
+  notice.style.right = `${Math.max(20, document.documentElement.clientWidth - header.right)}px`;
+}
+
 let cancelNoticeFade;
 // Shows `text` in the page notice, replacing any current one; returns the notice.
 export function notify(text, error = false) {
   const notice = document.getElementById("notice");
   cancelNoticeFade?.();
+  if (text) placeNotice(notice);
   notice.classList.remove("notice-leaving");
   notice.hidden = !text;
   notice.textContent = text;

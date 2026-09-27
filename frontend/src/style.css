@@ -713,12 +713,29 @@ footer a {
   top: 20px;
   right: 20px;
   width: min(420px, calc(100vw - 40px));
-  border: 1px solid var(--accent);
-  background: var(--surface, var(--soft));
-  color: var(--text);
-  padding: 15px 18px;
-  border-radius: 10px;
-  box-shadow: 0 12px 36px rgb(0 0 0 / 18%);
+  padding: 14px 20px;
+  /* A chat bubble: fully rounded except the corner nearest the screen edge. */
+  border-radius: 20px 6px 20px 20px;
+  /* Liquid glass: a barely-there tint over a lightly blurred, saturated
+     backdrop, lit by specular rims top and bottom instead of a border. */
+  --glass-tint: light-dark(rgb(255 255 255 / 18%), rgb(255 255 255 / 6%));
+  --glass-rim: light-dark(rgb(255 255 255 / 100%), rgb(255 255 255 / 45%));
+  background:
+    radial-gradient(
+      120% 90% at 15% 0%,
+      light-dark(rgb(255 255 255 / 50%), rgb(255 255 255 / 14%)),
+      transparent 55%
+    ),
+    var(--glass-tint);
+  backdrop-filter: blur(8px) saturate(220%) brightness(1.08);
+  -webkit-backdrop-filter: blur(8px) saturate(220%) brightness(1.08);
+  box-shadow:
+    inset 0 1.5px 0 var(--glass-rim),
+    inset 0 -1px 0 light-dark(rgb(255 255 255 / 70%), rgb(255 255 255 / 20%)),
+    inset 0 0 0 1px light-dark(rgb(255 255 255 / 45%), rgb(255 255 255 / 12%)),
+    inset 0 0 18px light-dark(rgb(255 255 255 / 35%), rgb(255 255 255 / 6%)),
+    0 10px 30px rgb(0 0 0 / 14%);
+  text-shadow: 0 1px 2px light-dark(rgb(255 255 255 / 70%), rgb(0 0 0 / 50%));
   font-size: 0.875rem;
   opacity: 1;
   transform: translateY(0);
@@ -734,7 +751,7 @@ footer a {
   transform: translateY(-8px);
 }
 .notice.error {
-  border-color: var(--bad);
+  --glass-tint: color-mix(in srgb, var(--bad) 14%, transparent);
 }
 progress {
   width: 100%;
