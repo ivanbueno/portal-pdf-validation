@@ -44,6 +44,11 @@ class Status(StrEnum):
     DELETED = "deleted"
 
 
+def outcome(passed):
+    """The status of a validation that completed, by whether it passed."""
+    return Status.PASSED if passed else Status.FAILED
+
+
 # Awaiting an upload or a worker.
 ACTIVE = (Status.UPLOADING, Status.QUEUED, Status.RUNNING)
 # Submitted and not yet finished: what workers pick up and the portal's progress bar waits on.

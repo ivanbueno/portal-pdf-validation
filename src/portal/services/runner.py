@@ -6,7 +6,7 @@ import subprocess
 import tempfile
 import time
 from pathlib import Path
-from ..config import PROFILES, Status
+from ..config import PROFILES, Status, outcome
 from .report_parser import parse_verapdf_xml
 
 
@@ -66,7 +66,7 @@ def run_profile(path, profile, settings):
             raise ValidationError("PDF could not be validated; it may be malformed or encrypted")
         return {
             "profile": profile,
-            "status": Status.PASSED if parsed.passed else Status.FAILED,
+            "status": outcome(parsed.passed),
             "passed": parsed.passed,
             "summary": parsed.summary.model_dump(),
             "issues": [i.model_dump() for i in parsed.issues],

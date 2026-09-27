@@ -243,7 +243,7 @@ def test_expiration_and_late_upload_cleanup(client, store, settings, uploaded):
 
 
 def test_document_tombstone_revokes_access_before_sweep(client, store, settings, uploaded):
-    tombstone(store, store.get(OWNER, uploaded["id"]), settings)
+    tombstone(store, settings, store.get(OWNER, uploaded["id"]))
     assert client.get(f"{BASE}/documents/{uploaded['id']}").status_code == 404
     sweep(store, settings)
     assert not store.objects

@@ -182,7 +182,7 @@ def dispatch_document(store, doc):
     return doc
 
 
-def tombstone(store, row, settings):
+def tombstone(store, settings, row):
     row["status"] = Status.DELETED
     # Keep tombstones beyond all previously issued upload URLs and worker leases.
     row["purge_after"] = time.time() + max(settings.upload_ttl, settings.lease_seconds) + 60
@@ -199,7 +199,7 @@ def delete_all(store, settings, owner):
     for row in live_documents(store, owner, time.time(), select=None):
         for _ in range(3):
             try:
-                tombstone(store, row, settings)
+                tombstone(store, settings, row)
                 deleted += 1
                 break
             except Conflict:
@@ -211,8 +211,9 @@ def delete_all(store, settings, owner):
     return deleted
 
 
-def document_view(store, doc, uploads=False):
+def document_view(store, doc):
+    """The public document, with a fresh upload grant while it awaits its PDF."""
     item = public(doc)
-    if uploads and doc["status"] == Status.UPLOADING:
+    if doc["status"] == Status.UPLOADING:
         item["upload_url"], item["upload_expires"] = store.upload_url(input_blob(doc))
     return item

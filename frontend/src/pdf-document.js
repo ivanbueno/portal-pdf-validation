@@ -52,16 +52,20 @@ async function scanMarkedContent(pdf, pageNumber) {
   const page = await pdf.getPage(pageNumber);
   const content = await page.getTextContent({ includeMarkedContent: true });
   const byMcid = new Map();
+  // The innermost MCID for each open marked-content section; sections without
+  // one inherit their parent's, so the top is always the one text belongs to.
   const markedContent = [];
   for (const item of content.items) {
     if (item.type === "beginMarkedContentProps") {
       const id = Number(item.id?.match(/_mc(\d+)$/)?.[1]);
-      markedContent.push(Number.isFinite(id) ? id : null);
+      markedContent.push(
+        Number.isFinite(id) ? id : (markedContent.at(-1) ?? null),
+      );
     } else if (item.type === "endMarkedContent") {
       markedContent.pop();
     } else if (item.str?.trim()) {
-      const id = [...markedContent].reverse().find((value) => value !== null);
-      if (id === undefined) continue;
+      const id = markedContent.at(-1);
+      if (id == null) continue;
       const [, , c, d, x, y] = item.transform;
       const height = Math.hypot(c, d) || item.height || 0;
       const rect = [x, y, x + (item.width || 0), y + height];

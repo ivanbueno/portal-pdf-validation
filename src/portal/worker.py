@@ -6,7 +6,7 @@ import time
 import uuid
 from azure.core.exceptions import AzureError
 from .cli import run
-from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status
+from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status, outcome
 from .events import log_event
 from .domain import input_blob, prefix, requested_profiles
 from .services.grouping import group_issues, issue_view
@@ -107,10 +107,7 @@ def summarize(doc_id, results):
     """
     passed = all(r["passed"] is True for r in results)
     page_count = next((r["page_count"] for r in results if r.get("page_count") is not None), None)
-    if any(r["status"] == Status.ERROR for r in results):
-        status = Status.ERROR
-    else:
-        status = Status.PASSED if passed else Status.FAILED
+    status = Status.ERROR if any(r["status"] == Status.ERROR for r in results) else outcome(passed)
     report = dict(
         document_id=doc_id,
         page_count=page_count,

@@ -38,16 +38,22 @@ export const plural = (count, singular, pluralForm = `${singular}s`) =>
 export const quantity = (count, singular) =>
   `${count} ${plural(count, singular)}`;
 
+const BINARY_UNITS = [
+  ["GiB", 1073741824],
+  ["MiB", 1048576],
+  ["KiB", 1024],
+];
+// `bytes` in the largest binary unit it fills, or KiB; `format` renders the number.
+const binary = (bytes, format) => {
+  const [unit, factor] =
+    BINARY_UNITS.find(([, factor]) => bytes >= factor) || BINARY_UNITS.at(-1);
+  return `${format(bytes / factor)} ${unit}`;
+};
 // API clients may reserve a document without its size; submission records it.
 export const size = (bytes) =>
-  bytes == null
-    ? "Size unavailable"
-    : bytes < 1048576
-      ? `${(bytes / 1024).toFixed(1)} KiB`
-      : `${(bytes / 1048576).toFixed(1)} MiB`;
-// Whole-number binary units for configured limits, e.g. "200 MiB", "2 GiB".
-export const limit = (bytes) =>
-  bytes >= 1073741824 ? `${bytes / 1073741824} GiB` : `${bytes / 1048576} MiB`;
+  bytes == null ? "Size unavailable" : binary(bytes, (n) => n.toFixed(1));
+// Configured limits in whole units, e.g. "200 MiB", "2 GiB".
+export const limit = (bytes) => binary(bytes, String);
 
 export const node = (tag, text, className) => {
   const el = document.createElement(tag);

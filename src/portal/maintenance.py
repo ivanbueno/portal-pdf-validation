@@ -21,7 +21,7 @@ def sweep(store, settings):
     for row in store.rows(where=CANDIDATES, parameters={"now": now}):
         try:
             if row["status"] != Status.DELETED and row["expires"] <= now:
-                row = tombstone(store, row, settings)
+                row = tombstone(store, settings, row)
             if row["status"] == Status.DELETED:
                 store.purge(prefix(row))
                 if row["purge_after"] <= now:

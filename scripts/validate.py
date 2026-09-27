@@ -15,6 +15,10 @@ def main():
     headers = {"Authorization": "Bearer " + os.environ["PDF_API_TOKEN"]}
     docs = []
     with httpx.Client(base_url=base.rstrip("/") + "/api/v1/", headers=headers, timeout=60) as api:
+        # The server owns the document lifecycle; an absolute URL bypasses the /api/v1 base.
+        response = api.get(base.rstrip("/") + "/api/config")
+        response.raise_for_status()
+        finished = set(response.json()["statuses"]["terminal"])
         # Never forward the Entra token to Blob Storage.
         with httpx.Client(timeout=1800) as blobs:
             for name in names:
@@ -41,7 +45,7 @@ def main():
                 response = api.get(f"documents/{doc_id}")
                 response.raise_for_status()
                 doc = response.json()
-                if doc["status"] not in {"passed", "failed", "error"}:
+                if doc["status"] not in finished:
                     continue
                 pending.remove(doc_id)
                 response = api.get(f"documents/{doc_id}/reports/json")

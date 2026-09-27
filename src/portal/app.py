@@ -208,7 +208,7 @@ def create_app(settings=None, storage=None):
         request.state.idempotency_key = key
         doc = reserve(storage, settings, principal, body, key)
         response.headers["Location"] = f"/api/v1/documents/{doc['id']}"
-        return document_view(storage, doc, uploads=True)
+        return document_view(storage, doc)
 
     @app.post(
         "/api/v1/documents/{doc_id}/submit",
@@ -306,7 +306,7 @@ def create_app(settings=None, storage=None):
 
     @app.delete("/api/v1/documents/{doc_id}", status_code=204)
     def delete_document(doc: Document):
-        tombstone(storage, doc, settings)
+        tombstone(storage, settings, doc)
         return Response(status_code=204)
 
     @app.delete("/api/v1/documents", response_model=DeletedDocuments)
