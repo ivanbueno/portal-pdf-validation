@@ -95,7 +95,6 @@ class DocumentPage(BaseModel):
     processed: int
     passed_by_profile: dict[ProfileId, int]
     pages: int
-    active_ids: list[str]
     activity: list[DocumentActivity]
     next_cursor: str | None = None
 

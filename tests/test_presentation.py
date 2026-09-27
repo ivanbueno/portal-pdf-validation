@@ -97,12 +97,12 @@ def test_list_filters_server_side_and_reports_workspace_totals(client, store, se
     doc_id = submitted
     pending = client.post("/api/v1/documents", json={"name": "Other.pdf", "size": 9}).json()
     queued = client.get("/api/v1/documents").json()
-    assert queued["active_ids"] == [doc_id]
+    assert [item["id"] for item in queued["activity"]] == [doc_id]
     process_document(store, settings, OWNER, doc_id, runner_with(page_count=3))
     page = client.get("/api/v1/documents?limit=1").json()
     assert page["total"] == page["matching"] == 2 and len(page["items"]) == 1
     assert page["processed"] == 1 and page["pages"] == 3
-    assert page["passed_by_profile"] == {"pdfua-1": 1, "wcag-2.2": 1} and page["active_ids"] == []
+    assert page["passed_by_profile"] == {"pdfua-1": 1, "wcag-2.2": 1} and page["activity"] == []
     assert "ua_passed" not in page and "wcag_passed" not in page
     search = client.get("/api/v1/documents?q=%20other").json()
     assert [d["id"] for d in search["items"]] == [pending["id"]]

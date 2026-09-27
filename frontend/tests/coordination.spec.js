@@ -28,7 +28,6 @@ const listing = (item = doc) => ({
   processed: 0,
   passed_by_profile: {},
   pages: 0,
-  active_ids: activity(item).map((row) => row.id),
   activity: activity(item),
 });
 const groups = (offset = 0) => ({

@@ -77,5 +77,4 @@ def document_page(store, owner, now, offset, limit, query, status, cursor=None):
         items=[public(row) for row in rows],
         next_cursor=next_cursor,
         activity=activity,
-        active_ids=[row["id"] for row in activity],
     )

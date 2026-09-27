@@ -29,7 +29,7 @@ const ACTIVE_POLL = 2500,
 const pollDelayFor = (activeCount) => (activeCount ? ACTIVE_POLL : IDLE_POLL);
 
 let documents = [],
-  stats = { total: 0, active_ids: [], passed_by_profile: {} },
+  stats = { total: 0, activity: [], passed_by_profile: {} },
   documentLimit = PAGE_SIZE,
   // Documents submitted in the current batch, tracked by the progress bar.
   progressDocumentIds = new Set(),
@@ -82,7 +82,7 @@ function renderStats() {
     stat.textContent = stats.passed_by_profile[stat.dataset.passedProfile] ?? 0;
   $("stat-pages").textContent = stats.pages;
   // Deleted or expired submissions count as finished so progress never stalls.
-  const active = new Set(stats.active_ids),
+  const active = new Set(stats.activity.map((item) => item.id)),
     total = progressDocumentIds.size,
     finished = [...progressDocumentIds].filter((id) => !active.has(id)).length;
   $("progress-row").hidden = !total || finished >= total;
@@ -341,7 +341,7 @@ export async function refresh({ append = false, activityOnly = false } = {}) {
     $("load-more").hidden = !nextCursor;
     $("delete-all").hidden = !stats.total;
     renderResults();
-    pollDelay = pollDelayFor(stats.active_ids.length);
+    pollDelay = pollDelayFor(stats.activity.length);
   } catch (error) {
     if (signal.aborted) return;
     pollDelay = Math.min(pollDelay * 2, MAX_POLL);

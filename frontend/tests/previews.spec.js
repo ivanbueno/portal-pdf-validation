@@ -37,7 +37,7 @@ test.beforeEach(async ({ page }) => {
         processed: 2,
         passed_by_profile: {},
         pages: 2,
-        active_ids: [],
+        activity: [],
       },
     }),
   );

@@ -235,7 +235,7 @@ test("Easy Auth sign-in card, sign-out, and expired session redirects", async ({
               processed: 0,
               passed_by_profile: { "pdfua-1": 0, "wcag-2.2": 0 },
               pages: 0,
-              active_ids: [],
+              activity: [],
             },
           },
     ),
@@ -443,7 +443,7 @@ test("retry reuses the reservation when its create response is lost", async ({
         processed: 0,
         passed_by_profile: {},
         pages: 0,
-        active_ids: [],
+        activity: [],
       },
     }),
   );
@@ -573,7 +573,6 @@ test("delete all documents asks for confirmation first", async ({ page }) => {
         processed: total,
         passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
         pages: 0,
-        active_ids: [],
         activity: [],
         // Older pages exist until everything is deleted.
         next_cursor: total ? "older" : null,
@@ -672,7 +671,7 @@ test("a document reserved without its size says so", async ({ page }) => {
         processed: 0,
         passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
         pages: 0,
-        active_ids: [],
+        activity: [],
       },
     }),
   );
@@ -717,7 +716,7 @@ test("the last row's action menu is not clipped by the table", async ({
         processed: 1,
         passed_by_profile: { "wcag-2.2": 1, "pdfua-1": 1 },
         pages: 0,
-        active_ids: [],
+        activity: [],
       },
     }),
   );
@@ -767,7 +766,7 @@ test("details open and close once their animations end, even when interrupted", 
         processed: 1,
         passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
         pages: 0,
-        active_ids: [],
+        activity: [],
       },
     }),
   );
