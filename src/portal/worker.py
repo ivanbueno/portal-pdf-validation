@@ -8,7 +8,7 @@ from azure.core.exceptions import AzureError
 from .cli import run
 from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status, outcome
 from .events import log_event
-from .domain import input_blob, prefix, requested_profiles, transition_processing
+from .domain import input_blob, prefix, requested_profiles, save_transition
 from .services.grouping import group_issues
 from .services.reports import summary, write_pages
 from .services.runner import ValidationError, profile_error, run_profile
@@ -61,7 +61,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
 
 def claim(store, settings, doc):
     """Start a new attempt under a fresh run ID and lease; raises Conflict if another worker won."""
-    return transition_processing(
+    return save_transition(
         store,
         doc,
         Status.RUNNING,
@@ -134,7 +134,7 @@ def publish(store, doc, results, raw_reports):
     # Save against the claim's ETag: deletion, a lease sweep, or a newer attempt changed the row
     # and must win this race. No read beforehand: the conditional write is the ownership check.
     try:
-        transition_processing(store, doc, **fields, **names, raw_reports=json.dumps(raw_reports))
+        save_transition(store, doc, **fields, **names, raw_reports=json.dumps(raw_reports))
     except Conflict:
         store.purge(run_prefix(doc))
         raise Superseded()
@@ -148,7 +148,7 @@ def release(store, doc):
     """
     retry = doc["attempts"] < MAX_ATTEMPTS
     try:
-        transition_processing(
+        save_transition(
             store,
             doc,
             Status.QUEUED if retry else Status.ERROR,

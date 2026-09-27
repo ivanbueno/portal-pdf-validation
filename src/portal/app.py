@@ -54,7 +54,7 @@ from .models.api import (
 
 log = logging.getLogger("portal")
 # Vite's default content hash is eight URL-safe characters.
-HASHED_ASSET = re.compile(r"^/assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
+HASHED_ASSET = re.compile(r"/assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+")
 
 # Paging parameters of the list endpoints; each endpoint sets its own default limit.
 Offset = Annotated[int, Query(ge=0)]
@@ -64,7 +64,7 @@ def Limit(maximum):
     return Annotated[int, Query(ge=1, le=maximum)]
 
 
-def standard_headers(request, status=500):
+def standard_headers(request, status):
     """Headers on every response, including the 500 for an unexpected failure."""
     headers = {
         "X-Content-Type-Options": "nosniff",
@@ -138,7 +138,7 @@ def create_app(settings=None, storage=None):
     @app.exception_handler(Exception)
     async def unexpected(request, exc):
         return JSONResponse(
-            {"detail": "Internal server error"}, status_code=500, headers=standard_headers(request)
+            {"detail": "Internal server error"}, status_code=500, headers=standard_headers(request, 500)
         )
 
     @app.exception_handler(NotFound)

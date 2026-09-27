@@ -174,7 +174,7 @@ def dispatch_document(store, doc):
     return doc
 
 
-def transition_processing(store, doc, status, **fields):
+def save_transition(store, doc, status, **fields):
     """Save a worker transition against its ETag, replacing attempt-specific state.
 
     Claims supply a fresh run ID and lease; queued work starts undispatched. Errors
