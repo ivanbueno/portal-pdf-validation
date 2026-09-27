@@ -84,7 +84,7 @@ function renderOccurrences(group, docId) {
   occurrences.append(
     node(
       "summary",
-      `${group.count} failed ${plural(group.count, "check")} · View locations`,
+      `${group.count} failed ${plural(group.count, "check")}`,
     ),
   );
   for (const occurrence of group.occurrences.slice(0, LISTED_OCCURRENCES)) {

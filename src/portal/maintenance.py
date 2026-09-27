@@ -4,7 +4,7 @@ from azure.core.exceptions import AzureError
 from .cli import run
 from .events import log_event
 from .config import PROCESSING, Status
-from .domain import dispatch_document, tombstone, prefix
+from .domain import dispatch_document, tombstone, prefix, transition_processing
 from .storage import Conflict
 
 log = logging.getLogger("portal.maintenance")
@@ -27,8 +27,7 @@ def sweep(store, settings):
                 if row["purge_after"] <= now:
                     store.remove(row)
             elif row["status"] == Status.RUNNING and row.get("lease_until", 0) <= now:
-                row.update(status=Status.QUEUED, dispatched=0.0)
-                row = store.save(row)
+                row = transition_processing(store, row, Status.QUEUED)
             dispatch_document(store, row)
         except Conflict:
             pass

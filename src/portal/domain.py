@@ -182,6 +182,22 @@ def dispatch_document(store, doc):
     return doc
 
 
+def transition_processing(store, doc, status, **fields):
+    """Save a worker transition against its ETag, replacing attempt-specific state.
+
+    Claims supply a fresh run ID and lease; queued work starts undispatched. Errors
+    describe only the current transition, never a previous attempt that has recovered.
+    """
+    row = {
+        key: value
+        for key, value in doc.items()
+        if key not in {"error", "run_id", "lease_until", "dispatched"}
+    }
+    if status == Status.QUEUED:
+        row["dispatched"] = 0.0
+    return store.save(row | {"status": status} | fields)
+
+
 def tombstone(store, settings, row):
     row["status"] = Status.DELETED
     # Keep tombstones beyond all previously issued upload URLs and worker leases.

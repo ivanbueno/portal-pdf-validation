@@ -46,7 +46,11 @@ function renderProfileOptions() {
 // A staged file and its table row, built once so upload progress updates
 // only the row's state cell.
 function stage(file) {
-  const item = { file, stateCell: node("td", "Ready") };
+  const item = {
+    file,
+    key: crypto.randomUUID(),
+    stateCell: node("td", "Ready"),
+  };
   item.remove = action("Remove", async () => {
     await cancelUpload(item);
     unstage(item);
@@ -131,7 +135,7 @@ async function submitItem(item) {
   } else {
     item.doc = await api("/documents", {
       method: "POST",
-      headers: item.key ? { "Idempotency-Key": item.key } : {},
+      headers: { "Idempotency-Key": item.key },
       body: JSON.stringify({
         name: item.file.name,
         size: item.file.size,
@@ -140,7 +144,6 @@ async function submitItem(item) {
     });
     ({ status, upload_url: uploadUrl } = item.doc);
   }
-  item.key = item.doc.idempotency_key;
   if (status === "uploading") {
     if (!item.uploaded) {
       uploadUrl ||= (
@@ -185,7 +188,6 @@ async function submitStaged() {
         await submitItem(item);
         submitted++;
       } catch (error) {
-        item.key ||= error.idempotencyKey;
         item.stateCell.textContent = error.message || "Retry required";
       }
       renderStaging();

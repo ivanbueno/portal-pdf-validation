@@ -183,8 +183,40 @@ def test_worker_lease_and_crash_recovery(store, settings, submitted):
     doc["lease_until"] = time.time() - 1
     store.save(doc)
     sweep(store, settings)
+    recovered = store.get(OWNER, submitted)
+    assert recovered["status"] == "queued"
+    assert "run_id" not in recovered and "lease_until" not in recovered
     assert process_document(store, settings, OWNER, submitted, successful_runner)
     assert store.get(OWNER, submitted)["attempts"] == 2
+
+
+@pytest.mark.parametrize("outcome", ["passed", "failed", "error"])
+def test_retry_replaces_attempt_state(client, store, settings, submitted, outcome):
+    assert not process_document(store, settings, OWNER, submitted, raising(OSError("offline")))
+    queued = store.get(OWNER, submitted)
+    assert queued["status"] == "queued" and queued["error"] == "Temporary processing failure"
+    assert queued["dispatched"] == 0.0
+    assert "run_id" not in queued and "lease_until" not in queued
+
+    def runner(path, profile, config):
+        running = store.get(OWNER, submitted)
+        assert running["status"] == "running" and running["attempts"] == 2
+        assert running["run_id"] and running["lease_until"] > time.time()
+        assert "error" not in running and "dispatched" not in running
+        if outcome == "error":
+            raise ValidationError("Validation timed out")
+        if outcome == "failed":
+            return failing_runner([ISSUE])(path, profile, config)
+        return successful_runner(path, profile, config)
+
+    assert process_document(store, settings, OWNER, submitted, runner)
+    finished = store.get(OWNER, submitted)
+    assert finished["status"] == outcome
+    assert not {"error", "run_id", "lease_until", "dispatched"} & finished.keys()
+    response = client.get(f"{BASE}/documents/{submitted}").json()
+    assert response["error"] is None
+    if outcome == "error":
+        assert all(result["error"] == "Validation timed out" for result in response["results"])
 
 
 def test_delete_race_does_not_publish(client, store, settings, submitted, monkeypatch):

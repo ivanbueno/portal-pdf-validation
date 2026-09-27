@@ -413,6 +413,90 @@ test("one invalid upload does not block other documents or duplicate retries", a
   await expect(page.locator("#results-body")).toContainText("independent.pdf");
 });
 
+test("retry reuses the reservation when its create response is lost", async ({
+  page,
+}) => {
+  await page.route("**/api/config", (route) =>
+    route.fulfill({
+      json: {
+        local: true,
+        maxFiles: 200,
+        maxFileBytes: 200 * 1024 * 1024,
+        maxSelectionBytes: 2 * 1024 * 1024 * 1024,
+        disclaimer: "Manual review is required.",
+        profiles: [
+          { id: "wcag-2.2", alias: "wcag", label: "WCAG 2.2", default: true },
+        ],
+        statuses: {
+          active: ["uploading", "queued", "running"],
+          terminal: ["passed", "failed", "error"],
+        },
+      },
+    }),
+  );
+  await page.route("**/api/v1/documents?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [],
+        total: 0,
+        matching: 0,
+        processed: 0,
+        passed_by_profile: {},
+        pages: 0,
+        active_ids: [],
+      },
+    }),
+  );
+  const reservations = new Map();
+  const keys = [];
+  await page.route("**/api/v1/documents", async (route) => {
+    const key = route.request().headers()["idempotency-key"];
+    keys.push(key);
+    if (!reservations.has(key)) {
+      const body = route.request().postDataJSON();
+      reservations.set(key, {
+        id: `reservation-${reservations.size}`,
+        idempotency_key: key,
+        ...body,
+        status: "uploading",
+        upload_url: `${new URL(route.request().url()).origin}/mock-upload`,
+      });
+    }
+    // The reservation committed, but the browser never received its key or ID.
+    if (keys.length === 1) return route.abort("failed");
+    return route.fulfill({ status: 201, json: reservations.get(key) });
+  });
+  let uploads = 0,
+    submissions = 0;
+  await page.route("**/mock-upload", (route) => {
+    uploads++;
+    return route.fulfill({ status: 201 });
+  });
+  await page.route("**/api/v1/documents/*/submit", (route) => {
+    submissions++;
+    return route.fulfill({ status: 202, json: {} });
+  });
+  await page.goto("/");
+  await expect(page.getByText("Local workspace")).toBeVisible();
+  await page.locator("#files").setInputFiles({
+    name: "lost-response.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("%PDF-1.7\n"),
+  });
+  await page.locator("#submit").click();
+  await expect(page.locator("#notice")).toContainText(
+    "0 files submitted. 1 file needs attention",
+  );
+  expect(keys[0]).toMatch(/^[0-9a-f-]{36}$/);
+  await page.locator("#submit").click();
+  await expect(page.locator("#notice")).toContainText("1 file submitted.");
+  expect(keys).toEqual([keys[0], keys[0]]);
+  expect(reservations.size).toBe(1);
+  expect(uploads).toBe(1);
+  expect(submissions).toBe(1);
+  await expect(page.locator("#staging")).toBeHidden();
+});
+
 test("removing staged files that finish out of order removes only those files", async ({
   page,
 }) => {
