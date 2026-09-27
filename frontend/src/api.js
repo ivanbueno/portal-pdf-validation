@@ -1,9 +1,4 @@
-import {
-  LeavingWorkspace,
-  LOGIN_PAGE,
-  LOGIN_URL,
-  LOGOUT_URL,
-} from "./common.js";
+import { LOGIN_URL, LOGOUT_URL, showSignIn, SignInRequired } from "./common.js";
 export const config = await fetch("/api/config").then((r) => {
   if (!r.ok) throw new Error("Configuration unavailable");
   return r.json();
@@ -12,11 +7,20 @@ const session = config.local
   ? { name: "Local workspace", kind: "user" }
   : await fetch("/api/session", { credentials: "same-origin" }).then(
       async (response) => {
-        // The server already sends these visitors to sign in; this covers a session
-        // that ended after the page loaded. The sign-in page explains which case it is.
+        // Signed-out visitors, and signed-in accounts without the workspace role.
         if (response.status === 401 || response.status === 403) {
-          location.replace(LOGIN_PAGE);
-          throw new LeavingWorkspace();
+          const signedOut = new URLSearchParams(location.search).has(
+            "signed-out",
+          );
+          if (signedOut) history.replaceState(null, "", "/");
+          showSignIn(
+            response.status === 403
+              ? "denied"
+              : signedOut
+                ? "signed-out"
+                : "signin",
+          );
+          throw new SignInRequired();
         }
         if (!response.ok)
           throw new Error(`Session unavailable (${response.status})`);

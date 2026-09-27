@@ -142,24 +142,20 @@ def test_production_requires_explicit_trust_boundary():
 @pytest.fixture
 def pages(settings, tmp_path):
     (tmp_path / "index.html").write_text("workspace")
-    (tmp_path / "login.html").write_text("sign in")
     settings.dist = tmp_path
 
 
-def test_workspace_shell_only_for_authorized_users(easy, pages):
+def test_workspace_shell_is_public_and_holds_no_session(easy, pages):
+    # The shell covers itself with the sign-in card; /api/session decides who gets in.
     unassigned = principal([("tid", "tenant"), ("oid", "person")])
-    for headers in ({}, {"x-ms-client-principal": "not-base64"}, {"x-ms-client-principal": unassigned}):
+    for headers in ({}, {"x-ms-client-principal": unassigned}, {"x-ms-client-principal": principal()}):
         response = easy.get("/", headers=headers, follow_redirects=False)
-        assert (response.status_code, response.headers["location"]) == (302, "/login")
-        # Signed-out and unassigned visitors both get the sign-in page, which explains which.
-        assert easy.get("/login", headers=headers).text == "sign in"
-    staff = {"x-ms-client-principal": principal()}
-    assert easy.get("/", headers=staff).text == "workspace"
-    response = easy.get("/login", headers=staff, follow_redirects=False)
-    assert (response.status_code, response.headers["location"]) == (302, "/")
-    assert response.headers["cache-control"] == "no-store"
+        assert (response.status_code, response.text) == (200, "workspace")
+        assert response.headers["cache-control"] == "no-store"
+    assert easy.get("/api/session").status_code == 401
+    assert easy.get("/api/session", headers={"x-ms-client-principal": unassigned}).status_code == 403
+    assert easy.get("/login", follow_redirects=False).status_code == 404
 
 
-def test_local_identity_gets_workspace_and_sign_in_preview(client, pages):
+def test_local_identity_gets_workspace(client, pages):
     assert client.get("/", follow_redirects=False).text == "workspace"
-    assert client.get("/login", follow_redirects=False).text == "sign in"

@@ -10,9 +10,10 @@
     />
     <title>PDF Validation Portal</title>
   </head>
-  <body>
+  <!-- The workspace starts covered; startup uncovers it once the session is authorized. -->
+  <body class="gated">
     <a class="skip" href="#workspace">Skip to workspace</a>
-    <main>
+    <main inert>
       <header>
         <div class="brand">
           <span class="brand-mark" aria-hidden="true">✓</span>
@@ -162,6 +163,92 @@
         <a href="/docs" target="_blank" rel="noopener">API documentation ↗</a>
       </footer>
     </main>
+    <!-- The sign-in card over the blurred workspace; the startup shows the screen
+         that says why the visitor cannot use it yet. Links work without scripts. -->
+    <div id="gate" class="gate" hidden>
+      <div class="login-bar">
+        <button id="gate-theme" aria-label="Change color theme">
+          Theme: system
+        </button>
+      </div>
+      <div class="login">
+        <div
+          class="login-card"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Sign in"
+        >
+          <div class="login-brand">
+            <span class="brand-mark" aria-hidden="true">✓</span>
+            <div>
+              <p class="login-product">PDF Validation Portal</p>
+              <p>Document accessibility workspace</p>
+            </div>
+          </div>
+          <section id="signin-screen" class="login-screen" hidden>
+            <p class="eyebrow">STAFF SIGN-IN</p>
+            <h2>Sign in to your workspace</h2>
+            <p class="login-lead">
+              Validate PDFs against PDF/UA-1 and WCAG 2.2, then review issues
+              page by page.
+            </p>
+            <a
+              id="signin"
+              class="login-action"
+              href="/.auth/login/aad?post_login_redirect_uri=%2F"
+              >Sign in with organization account
+              <span aria-hidden="true">→</span></a
+            >
+            <p class="login-note">
+              You'll continue to Microsoft Entra ID to sign in.
+            </p>
+            <ul class="login-facts">
+              <li>
+                <span class="stat-icon" aria-hidden="true">✓</span>PDF/UA-1 and
+                WCAG 2.2 checks, powered by veraPDF
+              </li>
+              <li>
+                <span class="stat-icon" aria-hidden="true">◷</span>Files are
+                private and deleted after 72 hours
+              </li>
+            </ul>
+          </section>
+          <section id="denied-screen" class="login-screen" hidden>
+            <span class="login-status denied" aria-hidden="true">!</span>
+            <h2>Your account doesn't have access</h2>
+            <p class="login-lead">
+              You're signed in, but this workspace requires the Validation.User
+              role. Ask your administrator to assign it, then sign in again.
+            </p>
+            <a
+              id="denied-signout"
+              class="login-action"
+              href="/.auth/logout?post_logout_redirect_uri=%2F%3Fsigned-out"
+              >Sign out</a
+            >
+            <p class="login-note">
+              Role changes take effect the next time you sign in.
+            </p>
+          </section>
+          <section id="signed-out-screen" class="login-screen" hidden>
+            <span class="login-status" aria-hidden="true">✓</span>
+            <h2>You're signed out</h2>
+            <p class="login-lead">
+              Sign in again to get back to your files and reports.
+            </p>
+            <a
+              class="login-action"
+              href="/.auth/login/aad?post_login_redirect_uri=%2F"
+              >Sign in again <span aria-hidden="true">→</span></a
+            >
+          </section>
+        </div>
+        <p class="login-disclaimer">
+          Automated checks do not establish full accessibility or WCAG
+          conformance. Manual review is required.
+        </p>
+      </div>
+    </div>
     <dialog id="confirm" aria-labelledby="confirm-title">
       <h2 id="confirm-title">Delete?</h2>
       <p id="confirm-message"></p>

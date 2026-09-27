@@ -1,12 +1,26 @@
 // Dependency-free helpers shared by entry.js, the app, and the sign-in page. Unlike
 // api.js, this module does no network work on import, so the startup error path can use it.
-export const LOGIN_PAGE = "/login";
 export const LOGIN_URL = "/.auth/login/aad?post_login_redirect_uri=%2F";
 export const LOGOUT_URL =
-  "/.auth/logout?post_logout_redirect_uri=%2Flogin%3Fsigned-out";
+  "/.auth/logout?post_logout_redirect_uri=%2F%3Fsigned-out";
 
-// Startup stopped because the browser is leaving for the sign-in page.
-export class LeavingWorkspace extends Error {}
+// Startup stopped because the visitor cannot use the workspace; the sign-in card says why.
+export class SignInRequired extends Error {}
+
+// Keeps the workspace blurred and inert under the sign-in card showing `screen`.
+export function showSignIn(screen) {
+  for (const section of document.querySelectorAll(".login-screen"))
+    section.hidden = section.id !== `${screen}-screen`;
+  document.getElementById("gate").hidden = false;
+  document.querySelector(".login-action:not([hidden])")?.focus();
+}
+
+// Uncovers the workspace; startup failures do this too, so their notice can be read.
+export function openWorkspace() {
+  document.getElementById("gate").hidden = true;
+  document.querySelector("main").inert = false;
+  document.body.classList.remove("gated");
+}
 
 // Fades the notice out after `delay` ms; returns a function that cancels it.
 function scheduleNoticeFade(notice, delay) {

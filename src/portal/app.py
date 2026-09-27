@@ -6,7 +6,7 @@ from urllib.parse import quote
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
-from fastapi.responses import JSONResponse, Response, FileResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import JSONResponse, Response, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from azure.core.exceptions import AzureError
 from .auth import owner, identity, Identity
@@ -311,27 +311,10 @@ def create_app(settings=None, storage=None):
             raise HTTPException(503, "Frontend has not been built; run npm run build in frontend")
         return FileResponse(settings.dist / name)
 
-    def authorized(request):
-        # Both pages are public in Easy Auth, so they share this one check and can never
-        # redirect to each other in a loop. Easy Auth still forwards a signed-in principal.
-        try:
-            identity(request, None)
-        except HTTPException:
-            return False
-        return True
-
     @app.get("/", include_in_schema=False)
-    def index(request: Request):
-        # Only authorized users receive the workspace; everyone else starts at sign-in.
-        if not authorized(request):
-            return RedirectResponse("/login", status_code=302)
+    def index():
+        # The shell holds no document data; it covers itself with the sign-in card
+        # until /api/session, which Easy Auth protects, confirms an authorized user.
         return page("index.html")
-
-    @app.get("/login", include_in_schema=False)
-    def login(request: Request):
-        # The local development identity is always signed in, so it gets the page as a preview.
-        if not settings.dev_identity and authorized(request):
-            return RedirectResponse("/", status_code=302)
-        return page("login.html")
 
     return app

@@ -12,7 +12,7 @@ Requirements: Docker Engine with Compose. The local service binds to loopback an
 docker compose up --build -d
 ```
 
-Open [the portal](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). The local development identity is always signed in, so [the sign-in page](http://127.0.0.1:8000/login) is shown only as a preview. The Compose stack includes Azurite, storage initialization, API, worker, and maintenance. First build downloads the checksum-verified veraPDF 1.30.2 installer. Stop with `docker compose down`; append `-v` only to erase local emulator data.
+Open [the portal](http://127.0.0.1:8000) or [API documentation](http://127.0.0.1:8000/docs). The Compose stack includes Azurite, storage initialization, API, worker, and maintenance. First build downloads the checksum-verified veraPDF 1.30.2 installer. Stop with `docker compose down`; append `-v` only to erase local emulator data.
 
 Limits: 200 files and 2 GiB per portal selection, 200 MiB per file. The API creates one document per request; multi-file selection is coordinated by the portal. Upload reservations expire after one hour. Submitted files and reports become inaccessible after 72 hours. Users can delete them sooner. Cleanup runs every two minutes in Azure (every 30 seconds locally); deletion tombstones persist beyond outstanding upload grants/worker leases to catch late writes.
 
@@ -36,7 +36,7 @@ flowchart LR
     Maintenance --> Blob
 ```
 
-- Azure Entra Easy Auth handles browser sessions and integration token validation. Visitors without an authorized session see only the `/login` sign-in page; the server withholds the workspace page until they sign in. The portal uses server-directed sign-in and the same versioned API as integrations. Upload requests use metadata only; PDFs go directly to Blob Storage. An owner-protected endpoint streams the submitted snapshot for viewing in a new tab.
+- Azure Entra Easy Auth handles browser sessions and integration token validation. Visitors without an authorized session see a sign-in card over the blurred, inert workspace shell, which holds no document data; the card appears whenever `/api/session` rejects them. The portal uses server-directed sign-in and the same versioned API as integrations. Upload requests use metadata only; PDFs go directly to Blob Storage. An owner-protected endpoint streams the submitted snapshot for viewing in a new tab.
 - Files upload to private blobs with short-lived, per-blob write grants. Submission checks the actual size/signature and pins an immutable snapshot before queueing. Original filenames are display metadata, never blob paths or shell arguments.
 - ETag claims and attempt-specific report paths prevent duplicate messages, stale workers, and deletion races from publishing the wrong result. Queue delivery is at least once, not exactly once.
 - Each queued document is its own durable outbox. Maintenance retries undispatched work and recovers expired worker leases. Maximum three processing attempts for infrastructure failures; deterministic validation failures are not retried.

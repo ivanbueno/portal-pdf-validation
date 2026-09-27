@@ -77,7 +77,7 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2025-01-01' = {
     platform: { enabled: true }
     globalValidation: {
       unauthenticatedClientAction: 'Return401'
-      excludedPaths: ['/', '/login', '/assets/*', '/api/config', '/health/live', '/health/ready']
+      excludedPaths: ['/', '/assets/*', '/api/config', '/health/live', '/health/ready']
     }
     httpSettings: { requireHttps: true }
     identityProviders: {

@@ -1,8 +1,16 @@
 import "./style.css";
-import { LeavingWorkspace, notify } from "./common.js";
+import "./login.css";
+import { initTheme } from "./theme.js";
+import { notify, openWorkspace, SignInRequired } from "./common.js";
+
+initTheme(
+  document.getElementById("theme"),
+  document.getElementById("gate-theme"),
+);
 import("./app.js").catch((error) => {
-  // The sign-in page is loading and explains what the visitor needs.
-  if (error instanceof LeavingWorkspace) return;
+  // The sign-in card is showing and explains what the visitor needs.
+  if (error instanceof SignInRequired) return;
+  openWorkspace();
   notify(
     "The workspace could not start. Check your connection and reload this page.",
     true,

@@ -1,4 +1,4 @@
-// The color theme toggle; one choice applies to the sign-in page and the workspace.
+// The color theme toggles; the workspace header and the sign-in card share one choice.
 const NEXT_THEME = { system: "light", light: "dark", dark: "system" };
 
 // Browsers that block site data throw on any storage access; the theme then
@@ -19,17 +19,18 @@ function saveTheme(theme) {
   }
 }
 
-export function initTheme(button) {
+export function initTheme(...buttons) {
   let theme = savedTheme();
   function apply() {
     if (theme === "system") delete document.documentElement.dataset.theme;
     else document.documentElement.dataset.theme = theme;
-    button.textContent = `Theme: ${theme}`;
+    for (const button of buttons) button.textContent = `Theme: ${theme}`;
   }
-  button.onclick = () => {
-    theme = NEXT_THEME[theme];
-    saveTheme(theme);
-    apply();
-  };
+  for (const button of buttons)
+    button.onclick = () => {
+      theme = NEXT_THEME[theme];
+      saveTheme(theme);
+      apply();
+    };
   apply();
 }

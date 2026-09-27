@@ -191,7 +191,7 @@ test("mobile layout, dark theme, 200% text, keyboard upload, and upload validati
   });
 });
 
-test("Easy Auth server-directed sign-in, sign-out, and expired session redirects", async ({
+test("Easy Auth sign-in card, sign-out, and expired session redirects", async ({
   page,
 }) => {
   await page.route("**/api/config", (route) =>
@@ -247,8 +247,10 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
     }),
   );
   await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
-  await expect(page.locator("#identity")).toHaveCount(0);
+  await expect(page.locator("#signin-screen")).toBeVisible();
+  await expect(page.locator("body")).toHaveClass(/gated/);
+  await expect(page.locator("main")).toHaveAttribute("inert", "");
+  await expect(page.locator("#identity")).toHaveText("");
   await page.locator("#signin").click();
   await expect(page).toHaveURL(
     /\/\.auth\/login\/aad\?post_login_redirect_uri=%2F$/,
@@ -256,9 +258,12 @@ test("Easy Auth server-directed sign-in, sign-out, and expired session redirects
   signedIn = true;
   await page.goto("/");
   await expect(page.locator("#identity")).toHaveText("Staff Member");
+  await expect(page.locator("#gate")).toBeHidden();
+  await expect(page.locator("body")).not.toHaveClass(/gated/);
+  await expect(page.locator("main")).not.toHaveAttribute("inert");
   await page.locator("#signout").click();
   await expect(page).toHaveURL(
-    /\/\.auth\/logout\?post_logout_redirect_uri=%2Flogin%3Fsigned-out$/,
+    /\/\.auth\/logout\?post_logout_redirect_uri=%2F%3Fsigned-out$/,
   );
   const initialPoll = page.waitForResponse((response) =>
     response.url().includes("/api/v1/documents?"),
@@ -282,7 +287,7 @@ test("unassigned Easy Auth user gets an actionable denial", async ({
     route.fulfill({ status: 403, json: { detail: "Missing role" } }),
   );
   await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(
     page.getByRole("heading", { name: "Your account doesn't have access" }),
   ).toBeVisible();
@@ -294,11 +299,11 @@ test("unassigned Easy Auth user gets an actionable denial", async ({
     page.locator("#denied-screen").getByRole("link", { name: "Sign out" }),
   ).toHaveAttribute(
     "href",
-    "/.auth/logout?post_logout_redirect_uri=%2Flogin%3Fsigned-out",
+    "/.auth/logout?post_logout_redirect_uri=%2F%3Fsigned-out",
   );
 });
 
-test("sign-in page shows no workspace and is accessible in light and dark", async ({
+test("sign-in card covers the workspace and is accessible in light and dark", async ({
   page,
 }) => {
   const errors = [];
@@ -306,24 +311,30 @@ test("sign-in page shows no workspace and is accessible in light and dark", asyn
   await page.route("**/api/session", (route) =>
     route.fulfill({ status: 401, json: { detail: "Sign in required" } }),
   );
-  await page.goto("/login");
+  await page.route("**/api/config", (route) =>
+    route.fulfill({ json: { local: false, authMode: "easyauth" } }),
+  );
+  await page.goto("/");
   await expect(
     page.getByRole("heading", { name: "Sign in to your workspace" }),
   ).toBeVisible();
-  await expect(page.locator("#workspace, #files, #results")).toHaveCount(0);
+  await expect(page.locator("#signin")).toBeFocused();
+  // The blurred workspace is inert: out of the accessibility tree and unclickable.
+  await expect(page.locator("main")).toHaveAttribute("inert", "");
   const light = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])
     .analyze();
   expect(light.violations).toEqual([]);
   await page.screenshot({ path: "test-results/login-desktop.png" });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto("/login?signed-out");
+  await page.goto("/?signed-out");
   await expect(
     page.getByRole("heading", { name: "You're signed out" }),
   ).toBeVisible();
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("#signin-screen")).toBeHidden();
-  while ((await page.locator("#theme").textContent()) !== "Theme: dark")
-    await page.locator("#theme").click();
+  while ((await page.locator("#gate-theme").textContent()) !== "Theme: dark")
+    await page.locator("#gate-theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.evaluate(() => (document.documentElement.style.fontSize = "32px"));
   expect(
@@ -353,6 +364,7 @@ test("an unavailable session service is not reported as missing access", async (
   );
   await expect(page.locator("#notice")).not.toContainText("Validation.User");
   await expect(page.locator("#notice").getByRole("link")).toHaveCount(0);
+  await expect(page.locator("#gate")).toBeHidden();
 });
 
 test("one invalid upload does not block other documents or duplicate retries", async ({
@@ -527,9 +539,7 @@ test("delete all documents asks for confirmation first", async ({ page }) => {
   expect(deletes).toBe(1);
 });
 
-test("the workspace and sign-in page start when site storage is blocked", async ({
-  page,
-}) => {
+test("the workspace starts when site storage is blocked", async ({ page }) => {
   // Browsers that block site data throw on any localStorage access.
   await page.addInitScript(() =>
     Object.defineProperty(window, "localStorage", {
@@ -544,8 +554,8 @@ test("the workspace and sign-in page start when site storage is blocked", async 
   await expect(page.getByText("Local workspace")).toBeVisible();
   await page.locator("#theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
-  // The choice is not remembered, so the sign-in page starts from the system theme.
-  await page.goto("/login");
+  // The choice is not remembered, so the next visit starts from the system theme.
+  await page.reload();
   await expect(page.locator("#theme")).toHaveText("Theme: system");
   await page.locator("#theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
