@@ -494,6 +494,13 @@ h3 {
   cursor: pointer;
   text-align: center;
   position: relative;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
+}
+.drop:hover {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+  background: color-mix(in srgb, var(--accent) 4%, var(--soft));
 }
 .drop.dragover {
   outline: 4px solid var(--accent);
@@ -553,10 +560,22 @@ h3 {
   margin-left: auto;
   color: var(--muted);
   font-size: 1.4rem;
-  transition: transform var(--dur-base) var(--ease-out);
+  transition:
+    transform var(--dur-base) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
 }
 .run-options[open] > summary::after {
   transform: rotate(90deg);
+}
+.run-options > summary :is(strong, .options-icon) {
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.run-options > summary:hover strong {
+  color: var(--text);
+}
+.run-options > summary:hover .options-icon,
+.run-options > summary:hover::after {
+  color: var(--accent);
 }
 .run-options::details-content {
   block-size: 0;
@@ -1377,6 +1396,13 @@ dialog::backdrop {
   font-size: 1rem;
   line-height: 1.5;
   overflow-wrap: anywhere;
+  transition:
+    color var(--dur-fast) var(--ease-out),
+    text-decoration-color var(--dur-fast) var(--ease-out);
+}
+a.pdf-link:hover {
+  color: var(--accent);
+  text-decoration-color: currentColor;
 }
 .file-metadata {
   display: block;
@@ -1724,6 +1750,12 @@ dialog::backdrop {
   padding: 10px 0;
   font-size: 0.875rem;
   font-weight: 600;
+  text-decoration: underline transparent;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease-out);
+}
+.occurrences > summary:hover {
+  text-decoration-color: color-mix(in srgb, currentColor 45%, transparent);
 }
 .issue-location {
   padding: 12px;
