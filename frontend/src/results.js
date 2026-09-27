@@ -72,7 +72,10 @@ function renderProfileStats() {
         const text = node("div");
         text.append(count, node("span", `${profile.label} compliant`));
         const card = node("article", undefined, "stat-card good");
-        card.append(node("span", "✓", "stat-icon"), text);
+        const mark = node("span", undefined, "stat-icon");
+        mark.setAttribute("aria-hidden", "true");
+        mark.append(icon("circle-check"));
+        card.append(mark, text);
         return card;
       }),
     );

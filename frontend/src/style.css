@@ -114,6 +114,40 @@ button:disabled {
   stroke-linejoin: round;
   vertical-align: middle;
 }
+/* Icons sized to the surface they sit in, rather than to its text. */
+.brand-mark .icon {
+  width: 26px;
+  height: 26px;
+  stroke-width: 2.5;
+}
+.upload-icon .icon,
+.options-icon .icon,
+#preview-close .icon {
+  width: 20px;
+  height: 20px;
+}
+.stat-icon .icon {
+  width: 18px;
+  height: 18px;
+}
+.empty > span {
+  display: block;
+}
+.empty > span .icon {
+  width: 32px;
+  height: 32px;
+  stroke-width: 1.5;
+}
+.primary .icon {
+  width: 1.1em;
+  height: 1.1em;
+}
+footer a .icon {
+  width: 1em;
+  height: 1em;
+  margin-left: 4px;
+  vertical-align: -0.1em;
+}
 /* Square icon-only buttons; min-height keeps the 42px target the text buttons have. */
 .icon-button,
 #theme,

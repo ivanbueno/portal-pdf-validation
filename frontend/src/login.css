@@ -132,6 +132,18 @@
   font-size: 1.25rem;
   font-weight: 700;
 }
+.login-status .icon {
+  width: 22px;
+  height: 22px;
+}
+.login-facts .stat-icon {
+  display: grid;
+  color: var(--accent);
+}
+.login-action .icon {
+  width: 1.1em;
+  height: 1.1em;
+}
 .login-status.denied {
   border-color: color-mix(in srgb, var(--bad) 30%, var(--panel));
   background: color-mix(in srgb, var(--bad) 10%, var(--panel));

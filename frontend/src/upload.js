@@ -3,6 +3,7 @@ import { api, config, upload } from "./api.js";
 import { beginBatch, showBatch, trackDocument } from "./results.js";
 import {
   $,
+  icon,
   iconAction,
   limit,
   node,
@@ -167,9 +168,10 @@ function setSubmitting(submitting) {
     $("submit").textContent = "Uploading…";
   } else {
     $("submit").removeAttribute("aria-busy");
-    $("submit").textContent = staged.length
-      ? `Retry remaining ${plural(staged.length, "file")}`
-      : "Validate PDFs →";
+    if (staged.length)
+      $("submit").textContent =
+        `Retry remaining ${plural(staged.length, "file")}`;
+    else $("submit").replaceChildren("Validate PDFs ", icon("arrow-right"));
   }
   renderStaging();
 }

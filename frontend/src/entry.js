@@ -1,8 +1,10 @@
 import "./style.css";
 import "./login.css";
+import { renderIcons } from "./icons.js";
 import { initTheme } from "./theme.js";
 import { notify, openWorkspace, SignInRequired } from "./common.js";
 
+renderIcons();
 initTheme(
   document.getElementById("theme"),
   document.getElementById("gate-theme"),

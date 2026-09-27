@@ -16,7 +16,7 @@
     <main inert>
       <header>
         <div class="brand">
-          <span class="brand-mark" aria-hidden="true">✓</span>
+          <span class="brand-mark" aria-hidden="true" data-icon="check"></span>
           <div>
             <h1>PDF Validation Portal</h1>
             <p>Document accessibility workspace</p>
@@ -38,14 +38,14 @@
       <section id="workspace" class="card" aria-labelledby="upload-heading">
         <section class="stats" aria-label="Validation statistics">
           <article class="stat-card">
-            <span class="stat-icon" aria-hidden="true">☐</span>
+            <span class="stat-icon" aria-hidden="true" data-icon="file"></span>
             <div>
               <strong id="stat-processed">0</strong><span>Files processed</span>
             </div>
           </article>
           <!-- One passed-count card per validation profile renders here. -->
           <article class="stat-card accent">
-            <span class="stat-icon" aria-hidden="true">☰</span>
+            <span class="stat-icon" aria-hidden="true" data-icon="files"></span>
             <div>
               <strong id="stat-pages">0</strong><span>Pages processed</span>
             </div>
@@ -58,7 +58,11 @@
           <span class="pill neutral">Powered by veraPDF</span>
         </div>
         <label id="drop" class="drop"
-          ><span class="upload-icon" aria-hidden="true">↑</span
+          ><span
+            class="upload-icon"
+            aria-hidden="true"
+            data-icon="upload"
+          ></span
           ><strong>Drop PDFs here to begin</strong
           ><span
             >or <span class="browse">choose files</span> from your
@@ -86,7 +90,11 @@
         </div>
         <details class="run-options">
           <summary>
-            <span class="options-icon" aria-hidden="true">☷</span
+            <span
+              class="options-icon"
+              aria-hidden="true"
+              data-icon="sliders"
+            ></span
             ><strong>Run options</strong
             ><span class="muted">Recommended defaults are selected</span>
           </summary>
@@ -96,7 +104,8 @@
         </details>
         <div class="submit-row">
           <button id="submit" class="primary" disabled>
-            Validate PDFs <span aria-hidden="true">→</span>
+            Validate PDFs
+            <span aria-hidden="true" data-icon="arrow-right"></span>
           </button>
         </div>
       </section>
@@ -120,7 +129,7 @@
         </div>
         <div class="activity-content">
           <div id="empty" class="empty">
-            <span aria-hidden="true">▤</span>
+            <span aria-hidden="true" data-icon="inbox"></span>
             <h3>No files yet</h3>
             <p>Your validation results will appear here.</p>
           </div>
@@ -158,7 +167,10 @@
       </section>
       <footer>
         <p id="disclaimer"></p>
-        <a href="/docs" target="_blank" rel="noopener">API documentation ↗</a>
+        <a href="/docs" target="_blank" rel="noopener"
+          >API documentation<span class="sr-only"> (opens in a new tab)</span
+          ><span aria-hidden="true" data-icon="external-link"></span
+        ></a>
       </footer>
     </main>
     <!-- The sign-in card over the blurred workspace; the startup shows the screen
@@ -175,7 +187,11 @@
           aria-label="Sign in"
         >
           <div class="login-brand">
-            <span class="brand-mark" aria-hidden="true">✓</span>
+            <span
+              class="brand-mark"
+              aria-hidden="true"
+              data-icon="check"
+            ></span>
             <div>
               <p class="login-product">PDF Validation Portal</p>
               <p>Document accessibility workspace</p>
@@ -193,24 +209,36 @@
               class="login-action"
               href="/.auth/login/aad?post_login_redirect_uri=%2F"
               >Sign in with organization account
-              <span aria-hidden="true">→</span></a
-            >
+              <span aria-hidden="true" data-icon="arrow-right"></span
+            ></a>
             <p class="login-note">
               You'll continue to Microsoft Entra ID to sign in.
             </p>
             <ul class="login-facts">
               <li>
-                <span class="stat-icon" aria-hidden="true">✓</span>PDF/UA-1 and
-                WCAG 2.2 checks, powered by veraPDF
+                <span
+                  class="stat-icon"
+                  aria-hidden="true"
+                  data-icon="shield-check"
+                ></span
+                >PDF/UA-1 and WCAG 2.2 checks, powered by veraPDF
               </li>
               <li>
-                <span class="stat-icon" aria-hidden="true">◷</span>Files are
-                private and deleted after 72 hours
+                <span
+                  class="stat-icon"
+                  aria-hidden="true"
+                  data-icon="clock"
+                ></span
+                >Files are private and deleted after 72 hours
               </li>
             </ul>
           </section>
           <section id="denied-screen" class="login-screen" hidden>
-            <span class="login-status denied" aria-hidden="true">!</span>
+            <span
+              class="login-status denied"
+              aria-hidden="true"
+              data-icon="lock"
+            ></span>
             <h2>Your account doesn't have access</h2>
             <p class="login-lead">
               You're signed in, but this workspace requires the Validation.User
@@ -227,7 +255,11 @@
             </p>
           </section>
           <section id="signed-out-screen" class="login-screen" hidden>
-            <span class="login-status" aria-hidden="true">✓</span>
+            <span
+              class="login-status"
+              aria-hidden="true"
+              data-icon="log-out"
+            ></span>
             <h2>You're signed out</h2>
             <p class="login-lead">
               Sign in again to get back to your files and reports.
@@ -235,8 +267,9 @@
             <a
               class="login-action"
               href="/.auth/login/aad?post_login_redirect_uri=%2F"
-              >Sign in again <span aria-hidden="true">→</span></a
-            >
+              >Sign in again
+              <span aria-hidden="true" data-icon="arrow-right"></span
+            ></a>
           </section>
         </div>
         <p class="login-disclaimer">
@@ -257,7 +290,7 @@
       <div class="preview-dialog-heading">
         <h2 id="preview-title">PDF page preview</h2>
         <button id="preview-close" type="button" aria-label="Close preview">
-          <span aria-hidden="true">×</span>
+          <span aria-hidden="true" data-icon="x"></span>
         </button>
       </div>
       <p id="preview-note" class="muted"></p>
