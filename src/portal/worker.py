@@ -40,8 +40,7 @@ def process_document(store, settings, owner, doc_id, runner=run_profile):
     if doc["status"] == Status.RUNNING and doc.get("lease_until", 0) > time.time():
         return False
     if doc["attempts"] >= MAX_ATTEMPTS:
-        doc.update(status=Status.ERROR, error=EXHAUSTED)
-        store.save(doc)
+        release(store, doc)
         return True
     try:
         doc = claim(store, settings, doc)
@@ -149,9 +148,9 @@ def publish(store, doc, results, raw_reports):
 
 
 def release(store, doc):
-    """After an infrastructure failure, requeue the document, or fail it after the last attempt.
+    """Requeue the document after an infrastructure failure, or fail it after the last attempt.
 
-    Saved against the claim's ETag, so a document deleted or claimed again meanwhile is left alone.
+    Saved against the row's ETag, so a document deleted or claimed again meanwhile is left alone.
     """
     retry = doc["attempts"] < MAX_ATTEMPTS
     try:

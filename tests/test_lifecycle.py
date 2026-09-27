@@ -93,10 +93,18 @@ def test_incomplete_upload_can_resume(client, store):
     assert client.post(f"{BASE}/documents/{doc['id']}/submit").status_code == 202
 
 
-@pytest.mark.parametrize("contents", [b"not-a-pdf", b"%PDF-too-many-bytes"])
-def test_invalid_upload(client, store, uploaded, contents):
+@pytest.mark.parametrize(
+    "contents, detail",
+    [
+        (b"not-a-pdf", "File is not a PDF"),
+        (b"%PDF-too-many-bytes", "Uploaded size does not match the reserved file size"),
+    ],
+)
+def test_invalid_upload(client, store, uploaded, contents, detail):
     put_input(store, uploaded["id"], contents)
-    assert client.post(f"{BASE}/documents/{uploaded['id']}/submit").status_code == 409
+    response = client.post(f"{BASE}/documents/{uploaded['id']}/submit")
+    # The caller learns what is wrong with the file, not just that submission failed.
+    assert response.status_code == 409 and response.json()["detail"] == detail
 
 
 def test_full_lifecycle_and_snapshot(client, store, settings, submitted):
@@ -281,6 +289,14 @@ def test_three_transient_attempts(store, settings, submitted, monkeypatch):
         process_document(store, settings, OWNER, submitted, successful_runner)
     doc = store.get(OWNER, submitted)
     assert doc["status"] == "error" and doc["attempts"] == 3
+
+
+def test_exhausted_document_changed_meanwhile_is_left_alone(store, settings, submitted, monkeypatch):
+    doc = store.get(OWNER, submitted)
+    store.save(doc | {"attempts": 3})
+    monkeypatch.setattr(store, "save", raising(Conflict()))
+    # A concurrent change (say, a deletion) wins; the message is still acknowledged.
+    assert process_document(store, settings, OWNER, submitted, successful_runner)
 
 
 def test_failed_publish_requeues_without_partial_report(store, settings, submitted, monkeypatch):

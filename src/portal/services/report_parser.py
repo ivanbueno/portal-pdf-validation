@@ -20,16 +20,23 @@ class ParsedReport:
     page_count: int | None = None
 
 
-def parse_verapdf_xml(xml_content: str, duration_ms: int) -> ParsedReport:
+def parse_verapdf_xml(xml_content: str | bytes, duration_ms: int) -> ParsedReport:
+    """Parse veraPDF's XML report; pass the raw bytes to avoid decoding a copy first."""
     try:
         root = ET.fromstring(xml_content)
     except ET.ParseError as exc:
         raise ValueError("veraPDF output is not valid XML") from exc
 
+    # One pass over the whole report finds the validation reports and the extracted pages.
+    validation_reports, pages = [], None
+    for element in root.iter():
+        name = _local_name(element.tag)
+        if name == "validationReport":
+            validation_reports.append(element)
+        elif name == "pages" and pages is None:
+            pages = element
     if _local_name(root.tag) == "validationReport":
         validation_reports = [root]
-    else:
-        validation_reports = [el for el in root.iter() if _local_name(el.tag) == "validationReport"]
     if not validation_reports:
         raise ValueError("veraPDF output does not contain validationReport nodes")
 
@@ -69,14 +76,7 @@ def parse_verapdf_xml(xml_content: str, duration_ms: int) -> ParsedReport:
             duration_ms=max(duration_ms, 0),
         ),
         issues=issues,
-        page_count=next(
-            (
-                len(list(_iter_descendants(el, "page")))
-                for el in root.iter()
-                if _local_name(el.tag) == "pages"
-            ),
-            None,
-        ),
+        page_count=None if pages is None else sum(1 for _ in _iter_descendants(pages, "page")),
     )
 
 
@@ -102,8 +102,7 @@ def _parse_report_issues(report: ET.Element) -> list[Issue]:
 
         assertions = [
             assertion
-            for assertion in list(_iter_descendants(rule, "assertion"))
-            + list(_iter_descendants(rule, "check"))
+            for assertion in _iter_descendants(rule, "assertion", "check")
             if (assertion.attrib.get("status") or "failed").lower() == "failed"
         ]
 
@@ -192,9 +191,10 @@ def _child_text(element: ET.Element, name: str) -> str | None:
     return None
 
 
-def _iter_descendants(element: ET.Element, name: str):
+def _iter_descendants(element: ET.Element, *names: str):
+    """Descendants with any of `names`, in document order, from one walk of the subtree."""
     for descendant in element.iter():
-        if _local_name(descendant.tag) == name and descendant is not element:
+        if _local_name(descendant.tag) in names and descendant is not element:
             yield descendant
 
 

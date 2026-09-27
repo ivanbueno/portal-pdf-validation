@@ -61,7 +61,7 @@ def run_profile(path, profile, settings):
         check_output_size()
         raw = output.read_bytes()
         try:
-            parsed = parse_verapdf_xml(raw.decode("utf-8"), int((time.monotonic() - start) * 1000))
+            parsed = parse_verapdf_xml(raw, int((time.monotonic() - start) * 1000))
         except Exception:
             raise ValidationError("PDF could not be validated; it may be malformed or encrypted")
         return {

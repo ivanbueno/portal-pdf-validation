@@ -1,6 +1,11 @@
 // Page previews for veraPDF issue occurrences: locate the failing region, then
 // render its page with the region boxed.
-import { loadDocument, markedContentRects } from "./pdf-document.js";
+import {
+  cached,
+  loadDocument,
+  markedContentRects,
+  pageAnnotations,
+} from "./pdf-document.js";
 import { toViewportRect, unionRects, validRect } from "./pdf-geometry.js";
 import { contentItem, explicitBounds, objectNumbers } from "./pdf-locations.js";
 import { structureBounds } from "./pdf-structure.js";
@@ -33,12 +38,9 @@ async function annotationRegion(source, occurrence, reportedPage) {
     .map(([number]) => `${number}R`)
     .reverse();
   if (!refs.length) return null;
-  const { pdf } = source;
-  const last = reportedPage || pdf.numPages;
+  const last = reportedPage || source.pdf.numPages;
   for (let page = reportedPage || 1; page <= last; page++) {
-    const annotations = await (
-      await pdf.getPage(page)
-    ).getAnnotations({ intent: "display" });
+    const annotations = await pageAnnotations(source, page);
     const annotation = refs
       .map((ref) =>
         annotations.find(
@@ -70,6 +72,10 @@ async function locate(source, occurrence) {
     }
   );
 }
+
+// Everything `locate` reads: table messages can name the rows to box.
+export const occurrenceKey = (occurrence) =>
+  JSON.stringify([occurrence.page, occurrence.location, occurrence.message]);
 
 async function renderPage(pdf, pageNumber, rects, width) {
   const page = await pdf.getPage(pageNumber);
@@ -120,7 +126,12 @@ export async function renderOccurrencePreview(
   width,
 ) {
   const source = await loadDocument(docId, fetchPdf);
-  const { page, rects } = await locate(source, occurrence);
+  // Located once per occurrence: the thumbnail and enlarged renders share it.
+  const { page, rects } = await cached(
+    source.regions,
+    occurrenceKey(occurrence),
+    () => locate(source, occurrence),
+  );
   if (!page || page < 1 || page > source.pdf.numPages)
     throw new Error("No page could be matched to this veraPDF location");
   const canvas = await renderPage(source.pdf, page, rects, width);

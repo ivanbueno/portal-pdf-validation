@@ -22,6 +22,8 @@ from .config import (
     Status,
 )
 from .domain import (
+    NotFound,
+    Rejected,
     delete_all,
     reserve,
     submit,
@@ -134,6 +136,14 @@ def create_app(settings=None, storage=None):
         return JSONResponse(
             {"detail": "Internal server error"}, status_code=500, headers=standard_headers(request)
         )
+
+    @app.exception_handler(NotFound)
+    async def not_found(request, exc):
+        return JSONResponse({"detail": "Not found"}, status_code=404)
+
+    @app.exception_handler(Rejected)
+    async def rejected(request, exc):
+        return JSONResponse({"detail": str(exc)}, status_code=409)
 
     @app.exception_handler(Conflict)
     async def conflict(request, exc):

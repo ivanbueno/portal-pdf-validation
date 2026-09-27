@@ -1,7 +1,8 @@
 // Page-preview thumbnails for issue locations and the enlarged preview dialog.
 import { api } from "./api.js";
+import { cached } from "./pdf-document.js";
 import { isDocumentLevel } from "./pdf-locations.js";
-import { renderOccurrencePreview } from "./pdf-previews.js";
+import { occurrenceKey, renderOccurrencePreview } from "./pdf-previews.js";
 import { $, node } from "./ui.js";
 
 const THUMBNAIL_WIDTH = 320;
@@ -15,13 +16,9 @@ const fetchPdf = (id) => api(`/documents/${id}/pdf`, { download: true });
 function cachedPreview(docId, occurrence, width) {
   if (cache.docId !== docId) cache = { docId, previews: new Map() };
   const { previews } = cache;
-  const key = `${occurrence.page || ""}:${occurrence.location || ""}:${width}`;
-  if (!previews.has(key)) {
-    const result = renderOccurrencePreview(docId, occurrence, fetchPdf, width);
-    result.catch(() => previews.delete(key));
-    previews.set(key, result);
-  }
-  return previews.get(key);
+  return cached(previews, `${occurrenceKey(occurrence)}:${width}`, () =>
+    renderOccurrencePreview(docId, occurrence, fetchPdf, width),
+  );
 }
 const previewAlt = (image) =>
   `PDF page ${image.page}${image.precise ? " with the failed region boxed in red" : " without a precise highlight"}`;

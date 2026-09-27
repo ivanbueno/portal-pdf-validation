@@ -1,10 +1,17 @@
 import json
 import hashlib
 import time
-from fastapi import HTTPException
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
 from .config import ACTIVE, PROCESSING, PROFILES, TERMINAL, Status
 from .storage import Conflict
+
+
+class NotFound(Exception):
+    """No such live document for the caller; missing, expired, deleted, and foreign look alike."""
+
+
+class Rejected(Exception):
+    """The request conflicts with the document's state. The message is shown to the caller."""
 
 
 PUBLIC = {
@@ -103,7 +110,7 @@ def get_owned(store, owner, doc_id):
     """The owner's live document; anything else is indistinguishable from a missing one."""
     row = store.get(owner, doc_id)
     if not row or not is_live(row):
-        raise HTTPException(404, "Not found")
+        raise NotFound()
     return row
 
 
@@ -133,9 +140,9 @@ def reserve(store, settings, owner, body, key):
         except Conflict:
             doc = store.get(owner, doc_id)
     if doc.get("fingerprint") != fingerprint:
-        raise HTTPException(409, "Idempotency key was already used for different document metadata")
+        raise Rejected("Idempotency key was already used for different document metadata")
     if not is_live(doc):
-        raise HTTPException(409, "This idempotency key belongs to an expired or deleted document")
+        raise Rejected("This idempotency key belongs to an expired or deleted document")
     return doc
 
 
@@ -143,8 +150,11 @@ def submit(store, settings, doc):
     if doc["status"] == Status.UPLOADING:
         try:
             snapshot, size = store.snapshot(input_blob(doc), doc.get("size"))
-        except (ResourceNotFoundError, ResourceModifiedError, ValueError):
-            raise HTTPException(409, "Upload incomplete or invalid")
+        except (ResourceNotFoundError, ResourceModifiedError):
+            raise Rejected("Upload incomplete; finish uploading the file, then submit again")
+        except ValueError as exc:
+            # Storage explains what is wrong with the uploaded file.
+            raise Rejected(str(exc))
         now = time.time()
         # One conditional write binds the snapshot and commits the durable outbox.
         doc.update(

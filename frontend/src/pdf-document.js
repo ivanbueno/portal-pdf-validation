@@ -9,7 +9,7 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 let current;
 
-// Resolves to a source: { docId, pdf, data, markedContent, structure }.
+// Resolves to a source: { docId, pdf, data, markedContent, annotations, regions, structure }.
 export function loadDocument(docId, fetchPdf) {
   if (current?.docId === docId) return current.source;
   // pdf.js 6 removed PDFDocumentProxy.destroy(); the loading task owns cleanup.
@@ -27,6 +27,8 @@ export function loadDocument(docId, fetchPdf) {
       pdf,
       data,
       markedContent: new Map(),
+      annotations: new Map(),
+      regions: new Map(),
       structure: null,
     };
     if (current === entry) entry.loaded = source;
@@ -71,13 +73,26 @@ async function scanMarkedContent(pdf, pageNumber) {
   return byMcid;
 }
 
-// Text rectangles grouped by marked-content ID (MCID), scanned once per page.
-export function markedContentRects(source, pageNumber) {
-  const cache = source.markedContent;
-  if (!cache.has(pageNumber)) {
-    const scan = scanMarkedContent(source.pdf, pageNumber);
-    scan.catch(() => cache.delete(pageNumber));
-    cache.set(pageNumber, scan);
+// The promise `compute()` returns, cached under `key`; a failure is evicted so it can retry.
+export function cached(cache, key, compute) {
+  if (!cache.has(key)) {
+    const result = compute();
+    result.catch(() => cache.delete(key));
+    cache.set(key, result);
   }
-  return cache.get(pageNumber);
+  return cache.get(key);
 }
+
+// Text rectangles grouped by marked-content ID (MCID), scanned once per page.
+export const markedContentRects = (source, pageNumber) =>
+  cached(source.markedContent, pageNumber, () =>
+    scanMarkedContent(source.pdf, pageNumber),
+  );
+
+// A page's display annotations, read once per page.
+export const pageAnnotations = (source, pageNumber) =>
+  cached(source.annotations, pageNumber, async () =>
+    (await source.pdf.getPage(pageNumber)).getAnnotations({
+      intent: "display",
+    }),
+  );

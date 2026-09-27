@@ -57,8 +57,10 @@ class MemoryStorage:
         if name not in self.objects:
             raise ResourceNotFoundError("missing")
         data = self.objects[name]
-        if len(data) != size or not data.startswith(b"%PDF-"):
-            raise ValueError("invalid")
+        if len(data) != size:
+            raise ValueError("Uploaded size does not match the reserved file size")
+        if not data.startswith(b"%PDF-"):
+            raise ValueError("File is not a PDF")
         snapshot = uuid.uuid4().hex
         self.objects[(name, snapshot)] = data
         return snapshot, len(data)
