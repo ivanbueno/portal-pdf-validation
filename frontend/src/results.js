@@ -18,6 +18,15 @@ import {
 } from "./ui.js";
 
 const PAGE_SIZE = 20;
+// Poll quickly while documents are processing, slowly when idle, and back off
+// on errors up to the maximum.
+const ACTIVE_POLL = 2500,
+  IDLE_POLL = 15000,
+  MAX_POLL = 60000,
+  // Fast polls transfer only active metadata; the whole workspace is reconciled
+  // this often to discover external deletions, expirations, and uploads.
+  RECONCILE_INTERVAL = 30000;
+const pollDelayFor = (activeCount) => (activeCount ? ACTIVE_POLL : IDLE_POLL);
 
 let documents = [],
   stats = { total: 0, active_ids: [], passed_by_profile: {} },
@@ -31,7 +40,7 @@ let documents = [],
   lastFilters,
   lastActivity = "",
   lastFullRefresh = 0,
-  pollDelay = 2500,
+  pollDelay = ACTIVE_POLL,
   pollTimer,
   searchTimer;
 const expanded = new Set(),
@@ -270,6 +279,38 @@ const activitySignature = (items = []) =>
       .sort((a, b) => a[0].localeCompare(b[0])),
   );
 
+// Whether active documents are unchanged since the last full refresh, so a poll
+// can skip listing; sets the next poll delay when they are.
+async function activityUnchanged(signal) {
+  const { items } = await api("/documents/activity", { signal });
+  signal.throwIfAborted();
+  if (activitySignature(items) !== lastActivity) return false;
+  pollDelay = pollDelayFor(items.length);
+  return true;
+}
+
+// Collects rows from `params` until `documentLimit` are loaded or none remain.
+// The first page carries the workspace totals; the last one, the next cursor.
+async function fetchPages(params, collected, signal) {
+  let data, first;
+  do {
+    params.set(
+      "limit",
+      Math.min(config.maxFiles, documentLimit - collected.length),
+    );
+    data = await api(`/documents?${params}`, { signal });
+    signal.throwIfAborted();
+    first ||= data;
+    collected.push(...data.items);
+    if (data.next_cursor) params.set("cursor", data.next_cursor);
+  } while (
+    data.next_cursor &&
+    data.items.length &&
+    collected.length < documentLimit
+  );
+  return { stats: first, nextCursor: data.next_cursor };
+}
+
 export async function refresh({ append = false, activityOnly = false } = {}) {
   cancelRefresh();
   clearTimeout(searchTimer);
@@ -283,40 +324,15 @@ export async function refresh({ append = false, activityOnly = false } = {}) {
   append = append && !!nextCursor && filters === lastFilters;
   const collected = append ? [...documents] : [];
   if (append) params.set("cursor", nextCursor);
-  let data, firstPage;
   try {
-    // Fast polls transfer only active metadata. Reconcile the whole workspace
-    // every 30 seconds to discover external deletions, expirations, and uploads.
-    if (
-      activityOnly &&
-      lastFullRefresh &&
-      Date.now() - lastFullRefresh < 30000
-    ) {
-      const activity = await api("/documents/activity", { signal });
-      if (signal.aborted) return;
-      if (activitySignature(activity.items) === lastActivity) {
-        pollDelay = activity.items.length ? 2500 : 15000;
-        return;
-      }
-    }
-    do {
-      params.set(
-        "limit",
-        Math.min(config.maxFiles, documentLimit - collected.length),
-      );
-      data = await api(`/documents?${params}`, { signal });
-      if (signal.aborted) return;
-      firstPage ||= data;
-      collected.push(...data.items);
-      if (data.next_cursor) params.set("cursor", data.next_cursor);
-    } while (
-      data.next_cursor &&
-      data.items.length &&
-      collected.length < documentLimit
-    );
+    const reconcileDue =
+      !lastFullRefresh || Date.now() - lastFullRefresh >= RECONCILE_INTERVAL;
+    if (activityOnly && !reconcileDue && (await activityUnchanged(signal)))
+      return;
+    const page = await fetchPages(params, collected, signal);
     documents = collected;
-    stats = firstPage;
-    nextCursor = data.next_cursor;
+    stats = page.stats;
+    nextCursor = page.nextCursor;
     lastFilters = filters;
     if (!append) {
       lastActivity = activitySignature(stats.activity);
@@ -325,10 +341,10 @@ export async function refresh({ append = false, activityOnly = false } = {}) {
     $("load-more").hidden = !nextCursor;
     $("delete-all").hidden = !stats.total;
     renderResults();
-    pollDelay = stats.active_ids.length ? 2500 : 15000;
+    pollDelay = pollDelayFor(stats.active_ids.length);
   } catch (error) {
     if (signal.aborted) return;
-    pollDelay = Math.min(pollDelay * 2, 60000);
+    pollDelay = Math.min(pollDelay * 2, MAX_POLL);
     throw error;
   } finally {
     // Only the latest request owns the next poll, including after reconnects.
