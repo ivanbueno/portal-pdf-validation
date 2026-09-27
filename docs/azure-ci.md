@@ -28,17 +28,101 @@ az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 
 The deployment identity in the next step needs resource creation, ACR build, and role assignment permissions scoped to this resource group. Allow the `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.Storage`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, and `Microsoft.Authorization` providers to register. An administrator may register these providers ahead of time if the deployment identity cannot.
 
+```sh
+for provider in \
+  Microsoft.App \
+  Microsoft.Authorization \
+  Microsoft.ContainerRegistry \
+  Microsoft.Insights \
+  Microsoft.ManagedIdentity \
+  Microsoft.OperationalInsights \
+  Microsoft.Storage
+do
+  az provider register --namespace "$provider"
+done
+
+for provider in \
+  Microsoft.App \
+  Microsoft.Authorization \
+  Microsoft.ContainerRegistry \
+  Microsoft.Insights \
+  Microsoft.ManagedIdentity \
+  Microsoft.OperationalInsights \
+  Microsoft.Storage
+do
+  az provider show --namespace "$provider" \
+    --query registrationState --output tsv
+done
+```
+
 ## 3. Register the portal/API in Entra
 
 1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open **Identity > Applications > App registrations > New registration**.
 2. Name it `PDF Validation Portal`, select **Accounts in this organizational directory only**, and leave redirect URI empty for now. Create it and record its **Directory (tenant) ID** and **Application (client) ID**.
 3. Under **Expose an API**, set the Application ID URI to `api://<APPLICATION_CLIENT_ID>`. Set `api.requestedAccessTokenVersion` to `2` in the app manifest.
 4. Add an enabled delegated scope named `Validation.Access` for approved integrations that call on behalf of a user.
+
+> In the portal/API app registration (the one named PDF Validation > Portal):
+>
+> a. Open Expose an API. If you haven’t set an Application ID URI yet, > select Add and save the suggested api://<application-client-id> URI.
+> b. Select Add a scope.
+> b. Set Scope name to Validation.Access.
+> d. Choose Who can consent:
+>    - Admins only if an administrator should approve every client.
+>    - Admins and users if users can approve it themselves and your > tenant allows user consent.
+> e. Fill in the admin consent and, if applicable, user consent display > names and descriptions. For example: “Access PDF Validation Portal on > behalf of the signed-in user.”
+> f. Leave State set to Enabled, then select Add scope.
+>
+> The resulting scope identifier is:
+> api://<APPLICATION_CLIENT_ID>/Validation.Access
+>
+> An integration’s app registration must then request this delegated > permission under API permissions → Add a permission → My APIs → PDF > Validation Portal → Delegated permissions. Grant consent as required > by the choice above. Microsoft’s guide to exposing an API scope has > the corresponding portal steps.
+
 5. Add these enabled app roles under **App roles**:
    - `Validation.User`, allowed member types **Users/Groups**
    - `Validation.Run`, allowed member types **Applications**
+
+For each role, create an enabled app role in the PDF Validation Portal app registration. In App roles → Create app role, set:
+
+|Field	| Validation.User	| Validation.Run|
+| -------- | -------- | -------- |
+|Display name | Validation User | Validation Run|
+|Allowed member types | Users/Groups | Applications|
+|Value | Validation.User | Validation.Run|
+|Description | Allows assigned staff to use the PDF Validation Portal. | Allows an approved integration application to run  PDF validations.|
+|Do you want to enable this app role? | Yes | Yes|
+
+The Value is the exact role string the application checks in the validated claims. Assign Validation.User to staff or groups, and Validation. Run only to approved integration service principals.
+
 6. Under **Certificates & secrets**, create a client secret for Easy Auth. Copy the secret **Value**; GitHub will store it in step 6. Choose an expiry that supports your rotation policy.
 7. In **Enterprise applications**, assign authorized staff/groups the `Validation.User` role. Assign `Validation.Run` only to approved integration service principals. Configure assignment requirements, tenant consent, and Conditional Access/MFA according to organizational policy.
+
+> In the Microsoft Entra admin center, you assign roles > to the app’s enterprise application (its service > principal), not on the App registrations page.
+>
+> Assign Validation.User to staff or groups
+>
+> 1. Go to Identity → Applications → Enterprise > applications → All applications.
+> 2. Find and open PDF Validation Portal.
+> 3. Select Users and groups → Add user/group.
+> 4. Under Users and groups, select the staff members or > group you’re authorizing.
+> 5. Under Select a role, choose Validation User.
+> 6. Select Assign.
+>
+> If your organization uses groups, assign the role to > the authorized group rather than adding staff one at a > time. Group-based assignment may require an Entra ID > licensing tier; check your organization’s licensing if > the group cannot be assigned.
+>
+> Assign Validation.Run to an integration
+>
+> For each approved integration, first make sure it has > its own app registration and enterprise application > (service principal).
+> 1. Open the PDF Validation Portal enterprise > application and select Users and groups → Add user/> group.
+> 2. Find the integration’s service principal. In the > picker, switch from Users to All users and groups or > Service principals, depending on the portal view.
+> 3. Under Select a role, choose Validation Run, then > select Assign.
+>
+> If the service principal doesn’t appear in the picker, > it may not yet exist in your tenant. Have an > administrator create the integration’s enterprise > application/service principal, then try again. > Validation.Run should be limited to approved > integrations.
+>
+> Tenant-wide settings
+> - Require assignment: In the portal’s enterprise > application, open Properties and set Assignment > required? to Yes if you want Entra to block unassigned > users at sign-in. The app also requires Validation.User > for portal access.
+> - Consent: Admin consent for API permissions is managed > under App registrations → PDF Validation Portal → API > permissions → Grant admin consent. For > client-credentials integrations, an administrator also > needs to grant the API application permission/app role > to the integration. Review the requested permissions > before granting consent.
+> - Conditional Access and MFA: An Entra administrator > configures these under Protection → Conditional Access. > Apply your organization’s policy to the portal > enterprise application and intended users; test sign-in > after policy changes.
 
 Do not add a redirect URI yet; the hostname is produced by the first workflow run. The secret is consumed by Easy Auth and stored as a Container App secret, not passed to the Python process.
 
@@ -55,6 +139,35 @@ Replace `<OWNER>` and `<REPOSITORY>` with the exact GitHub repository path. The 
 Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment assigns the runtime identity access to storage and registry resources. A typical setup grants **Contributor** and **Role Based Access Control Administrator** scoped to this resource group. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
 
 Record the deployment service principal's **Application (client) ID**. It will be the `AZURE_DEPLOY_CLIENT_ID` value, distinct from the portal/API app registration ID.
+
+> You’ll create a separate Entra app for GitHub deployments, then give > its service principal Azure permissions on the resource group. These > steps require an Entra app administrator and an Azure administrator > with permission to assign roles.
+> 1. Create the deployment app
+> In the Microsoft Entra admin center:
+>> 1. Go to Identity → Applications → App registrations → New > >registration.
+>> 2. Name it PDF Validation GitHub Deploy.
+>> 3. Choose Accounts in this organizational directory only, leave > >redirect URI blank, and select Register.
+>> 4. On Overview, copy the Application (client) ID. This becomes > >AZURE_DEPLOY_CLIENT_ID.
+>> Creating the app registration creates its service principal in your >> tenant.
+> 2. Add GitHub’s federated credential
+>> 1. In the new app, open Certificates & secrets → Federated >credentials > → Add credential. Depending on the portal view, this may >be under > Federated credentials directly in the app’s menu.
+>> 2. Choose GitHub Actions deploying Azure resources as the scenario.
+>> 3. Enter your exact GitHub organization or user, repository, and the >> production environment.
+>> 4. Confirm the credential shows:
+>>    - Issuer: https://token.actions.githubusercontent.com
+>>    - Subject: repo:<OWNER>/<REPOSITORY>:environment:production
+>>    - Audience: api://AzureADTokenExchange
+>> 5. Save it.
+> The subject must match the production environment declared in the > workflow. Microsoft’s OIDC setup guide describes configuring the app, > federated credential, and Azure role assignment.
+> 3. Assign Azure permissions at the resource group
+> In the Azure portal:
+>> 1. Open Resource groups → your deployment resource group → Access > control (IAM) → Add → Add role assignment.
+>> 2. Assign Contributor to the deployment app’s service principal.  Search for PDF Validation GitHub Deploy under Select members.
+>> 3. Repeat Add role assignment for Role Based Access Control Administrator, selecting the same service principal.
+>> 4. Confirm both assignments are scoped to this resource group.
+>> The workflow creates managed identity role assignments for the app’s storage and registry access, so the deployment identity needs role assignment permissions. If the service principal doesn’t appear immediately in the picker, wait briefly and search again.
+> 4. Put the ID in GitHub
+> Add the copied client ID as the AZURE_DEPLOY_CLIENT_ID environment > variable in the GitHub production environment. The workflow also needs > AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID there. It authenticates with > OIDC; do not create a deployment client secret.
+> Keep this deployment app separate from the PDF Validation Portal app > registration. The portal registration’s client secret is a different > credential used by Easy Auth.
 
 ## 5. Configure the GitHub production environment
 
