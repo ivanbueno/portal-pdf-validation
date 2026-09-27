@@ -6,12 +6,15 @@ import {
   ACTIVE,
   TERMINAL,
   action,
+  icon,
+  iconAction,
   node,
   notify,
   outcomeLabel,
   profileIds,
   profileLabel,
   quantity,
+  setIconLabel,
   showError,
   size,
   statusLabel,
@@ -100,14 +103,14 @@ function renderStats() {
 const pageCount = (count) =>
   count == null ? "Page count unavailable" : quantity(count, "page");
 
-// A details toggle's glyph and state, from whether the document is expanded.
+// A details toggle's state, from whether the document is expanded; CSS turns its chevron.
 function renderToggle(toggle, id) {
-  toggle.textContent = expanded.has(id) ? "⌄" : "›";
   toggle.setAttribute("aria-expanded", String(expanded.has(id)));
 }
 
 function renderFileCell(d) {
   const toggle = action(undefined, () => toggleDetail(d), "expand-toggle");
+  toggle.append(icon("chevron-right"));
   toggle.id = `toggle-${d.id}`;
   toggle.setAttribute("aria-label", `Validation details for ${d.name}`);
   toggle.setAttribute("aria-controls", `details-${d.id}`);
@@ -167,15 +170,19 @@ function renderProfileOutcomes(d) {
 }
 
 function renderActions(d, openMenus) {
-  const reportButton = action("Download report", () => download(d.id, "json"));
+  const reportButton = iconAction(
+    "download",
+    `Download report for ${d.name}`,
+    () => download(d.id, "json"),
+  );
   reportButton.id = `report-${d.id}`;
   reportButton.disabled = !TERMINAL.includes(d.status) || !d.profiles?.length;
   const menu = node("details", undefined, "action-dropdown");
   menu.id = `actions-${d.id}`;
   menu.open = openMenus.has(menu.id);
-  const summary = node("summary", "▾");
+  const summary = node("summary");
   summary.id = `menu-${d.id}`;
-  summary.setAttribute("aria-label", `More actions for ${d.name}`);
+  setIconLabel(summary, "chevron-down", `More actions for ${d.name}`);
   // Every menu action closes the menu first.
   const menuAction = (text, handler, className) =>
     action(

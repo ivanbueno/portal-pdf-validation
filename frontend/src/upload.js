@@ -3,7 +3,7 @@ import { api, config, upload } from "./api.js";
 import { beginBatch, showBatch, trackDocument } from "./results.js";
 import {
   $,
-  action,
+  iconAction,
   limit,
   node,
   notify,
@@ -51,12 +51,11 @@ function stage(file) {
     key: crypto.randomUUID(),
     stateCell: node("td", "Ready"),
   };
-  item.remove = action("Remove", async () => {
+  item.remove = iconAction("x", `Remove ${file.name}`, async () => {
     await cancelUpload(item);
     unstage(item);
     renderStaging();
   });
-  item.remove.setAttribute("aria-label", `Remove ${file.name}`);
   const actions = node("td");
   actions.append(item.remove);
   item.row = node("tr");

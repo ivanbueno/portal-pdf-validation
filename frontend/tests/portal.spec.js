@@ -64,7 +64,7 @@ test("real multi-file uploads, reports, keyboard dialog, and deletion", async ({
   await expect(detail.locator(".issue-location").first()).toBeVisible();
   const download = page.waitForEvent("download");
   await fail
-    .getByRole("button", { name: "Download report", exact: true })
+    .getByRole("button", { name: "Download report for ua-fail.pdf" })
     .click();
   expect((await download).suggestedFilename()).toMatch(/\.json$/);
   const toggle = fail.getByRole("button", {
@@ -114,7 +114,9 @@ test("mobile layout, dark theme, 200% text, keyboard upload, and upload validati
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
   await expect(page.locator("#theme")).toBeVisible();
-  while ((await page.locator("#theme").textContent()) !== "Theme: dark")
+  while (
+    (await page.locator("#theme").getAttribute("aria-label")) !== "Theme: dark"
+  )
     await page.locator("#theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.locator("#files").focus();
@@ -333,7 +335,10 @@ test("sign-in card covers the workspace and is accessible in light and dark", as
   ).toBeVisible();
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("#signin-screen")).toBeHidden();
-  while ((await page.locator("#gate-theme").textContent()) !== "Theme: dark")
+  while (
+    (await page.locator("#gate-theme").getAttribute("aria-label")) !==
+    "Theme: dark"
+  )
     await page.locator("#gate-theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
   await page.evaluate(() => (document.documentElement.style.fontSize = "32px"));
@@ -642,7 +647,7 @@ test("the workspace starts when site storage is blocked", async ({ page }) => {
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   // The choice is not remembered, so the next visit starts from the system theme.
   await page.reload();
-  await expect(page.locator("#theme")).toHaveText("Theme: system");
+  await expect(page.locator("#theme")).toHaveAccessibleName("Theme: system");
   await page.locator("#theme").click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(errors).toEqual([]);

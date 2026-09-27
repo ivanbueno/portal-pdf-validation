@@ -103,6 +103,26 @@ button:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
+.icon {
+  width: 1.25em;
+  height: 1.25em;
+  flex: none;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vertical-align: middle;
+}
+/* Square icon-only buttons; min-height keeps the 42px target the text buttons have. */
+.icon-button,
+#theme,
+#gate-theme {
+  display: inline-grid;
+  place-items: center;
+  min-width: 42px;
+  padding: 0;
+}
 :focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 4px;
@@ -888,6 +908,9 @@ dialog::backdrop {
   button {
     transition: border-color 0.15s;
   }
+  .expand-toggle .icon {
+    transition: transform 0.15s ease-out;
+  }
   #progress-row:not([hidden]) {
     animation: progress-enter 0.24s ease-out both;
   }
@@ -963,12 +986,16 @@ dialog::backdrop {
   min-width: 0;
 }
 .expand-toggle {
+  display: inline-grid;
+  place-items: center;
   border: 0;
   background: transparent;
   padding: 0;
   min-width: 28px;
-  font-size: 1.4rem;
   color: var(--faint);
+}
+.expand-toggle[aria-expanded="true"] .icon {
+  transform: rotate(90deg);
 }
 .document-row:hover .expand-toggle,
 .expand-toggle[aria-expanded="true"] {
@@ -1115,6 +1142,7 @@ dialog::backdrop {
 }
 .split-button > button {
   border-radius: 8px 0 0 8px;
+  min-width: 44px;
   color: var(--text-2);
   font-weight: 500;
 }
@@ -1131,6 +1159,8 @@ dialog::backdrop {
   padding: 10px 12px;
   background: var(--panel);
   color: var(--faint);
+  display: grid;
+  place-items: center;
 }
 .action-dropdown > summary::-webkit-details-marker {
   display: none;

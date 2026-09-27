@@ -1,8 +1,9 @@
 // DOM helpers, formatting, notices, and labels shared by the portal modules.
 import { notify } from "./common.js";
 import { config } from "./api.js";
+import { icon, setIconLabel } from "./icons.js";
 
-export { notify };
+export { icon, notify, setIconLabel };
 
 export const $ = (id) => document.getElementById(id);
 
@@ -65,6 +66,16 @@ export const action = (text, handler, className) => {
   const b = node("button", text, className);
   b.type = "button";
   b.onclick = () => Promise.resolve(handler()).catch(showError);
+  return b;
+};
+// A button that shows only an icon; `label` names it for screen readers and tooltips.
+export const iconAction = (name, label, handler, className) => {
+  const b = action(
+    undefined,
+    handler,
+    `icon-button${className ? ` ${className}` : ""}`,
+  );
+  setIconLabel(b, name, label);
   return b;
 };
 
