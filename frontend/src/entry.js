@@ -22,7 +22,11 @@ settingsToggle.addEventListener("click", () => {
   if (open) settingsMenu.querySelector("button:not([hidden])")?.focus();
 });
 document.addEventListener("click", (event) => {
-  if (!settingsMenu.contains(event.target) && !settingsToggle.contains(event.target)) closeSettings();
+  if (
+    !settingsMenu.contains(event.target) &&
+    !settingsToggle.contains(event.target)
+  )
+    closeSettings();
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !settingsMenu.hidden) {

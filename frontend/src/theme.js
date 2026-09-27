@@ -36,7 +36,10 @@ export function initTheme(...buttons) {
     root.classList.remove("theme-switching");
     for (const button of buttons) {
       if (button.dataset.themeChoice) {
-        button.setAttribute("aria-pressed", String(button.dataset.themeChoice === theme));
+        button.setAttribute(
+          "aria-pressed",
+          String(button.dataset.themeChoice === theme),
+        );
       } else {
         setIconLabel(button, THEME_ICONS[theme], `Theme: ${theme}`);
       }
