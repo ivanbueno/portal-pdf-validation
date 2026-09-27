@@ -182,7 +182,7 @@ h3 {
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 16px;
   margin: -30px -30px 24px;
-  padding: 18px 28px;
+  padding: 12px 30px;
   border-bottom: 1px solid var(--line);
   border-radius: 14px 14px 0 0;
   background-color: var(--soft);
@@ -190,50 +190,40 @@ h3 {
   background-size: 8px 8px;
 }
 .stat-card {
-  min-height: 56px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 7px 12px;
-  border: 1px solid #cbd8e7;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--panel) 90%, var(--soft));
+  gap: 12px;
+  min-width: 0;
 }
-.stat-card.good {
-  border-color: #6dc39d;
-}
-.stat-card.accent {
-  border-color: #9495f5;
-}
-.stat-icon {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
+.stat-card .stat-icon {
+  width: auto;
+  height: auto;
+  flex: none;
+  border: 0;
+  border-radius: 0;
+  background: none;
   color: var(--accent);
-  background: var(--soft);
-  border: 1px solid var(--line);
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 700;
+  line-height: 1;
 }
 .stat-card.good .stat-icon {
   color: var(--good);
 }
 .stat-card > div {
-  display: grid;
-  gap: 1px;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0 8px;
   min-width: 0;
 }
 .stat-card strong {
-  font-size: 1.2rem;
-  line-height: 1.1;
+  font-size: 1.05rem;
+  line-height: 1.2;
 }
 .stat-card > div > span {
-  color: var(--muted);
-  font-weight: 600;
-  font-size: 0.8rem;
+  font-weight: 500;
+  font-size: 0.875rem;
 }
 .section-head {
   justify-content: space-between;
@@ -761,23 +751,16 @@ dialog::backdrop {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
     margin: -22px -18px 20px;
-    padding: 14px 16px;
+    padding: 10px 16px;
   }
   .stat-card {
-    min-height: 56px;
-    padding: 7px 9px;
     gap: 8px;
   }
-  .stat-icon {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
-  }
   .stat-card strong {
-    font-size: 1.2rem;
+    font-size: 1rem;
   }
   .stat-card > div > span {
-    font-size: 0.75rem;
+    font-size: 0.8125rem;
   }
   .brand h1 {
     font-size: 1.25rem;
