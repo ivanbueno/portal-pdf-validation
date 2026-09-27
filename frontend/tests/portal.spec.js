@@ -113,12 +113,14 @@ test("mobile layout, dark theme, 200% text, keyboard upload, and upload validati
 }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/");
-  await expect(page.locator("#theme")).toBeVisible();
-  while (
-    (await page.locator("#theme").getAttribute("aria-label")) !== "Theme: dark"
-  )
-    await page.locator("#theme").click();
+  await page.getByRole("button", { name: "Account settings" }).click();
+  await page.getByRole("button", { name: "Theme: dark" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "dark");
+  await expect(
+    page.getByRole("button", { name: "Theme: dark" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.keyboard.press("Escape");
+  await expect(page.locator("#account-settings-menu")).toBeHidden();
   await page.locator("#files").focus();
   await expect(page.locator("#files")).toBeFocused();
   await page.locator("#files").setInputFiles({
@@ -263,6 +265,7 @@ test("Easy Auth sign-in card, sign-out, and expired session redirects", async ({
   await expect(page.locator("#gate")).toBeHidden();
   await expect(page.locator("body")).not.toHaveClass(/gated/);
   await expect(page.locator("main")).not.toHaveAttribute("inert");
+  await page.getByRole("button", { name: "Account settings" }).click();
   await page.locator("#signout").click();
   await expect(page).toHaveURL(
     /\/\.auth\/logout\?post_logout_redirect_uri=%2F%3Fsigned-out$/,
@@ -643,12 +646,16 @@ test("the workspace starts when site storage is blocked", async ({ page }) => {
   page.on("pageerror", (error) => errors.push(error.message));
   await page.goto("/");
   await expect(page.getByText("Local workspace")).toBeVisible();
-  await page.locator("#theme").click();
+  await page.getByRole("button", { name: "Account settings" }).click();
+  await page.getByRole("button", { name: "Theme: light" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   // The choice is not remembered, so the next visit starts from the system theme.
   await page.reload();
-  await expect(page.locator("#theme")).toHaveAccessibleName("Theme: system");
-  await page.locator("#theme").click();
+  await page.getByRole("button", { name: "Account settings" }).click();
+  await expect(
+    page.getByRole("button", { name: "Theme: system" }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page.getByRole("button", { name: "Theme: light" }).click();
   await expect(page.locator("html")).toHaveAttribute("data-theme", "light");
   expect(errors).toEqual([]);
 });
