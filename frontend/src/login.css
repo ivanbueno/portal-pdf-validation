@@ -65,9 +65,6 @@
 .login-screen {
   padding: 32px;
 }
-.login-screen .eyebrow {
-  color: var(--accent);
-}
 .login-screen h2 {
   margin: 8px 0 10px;
   font-size: 1.5rem;
@@ -78,7 +75,7 @@
   margin: 0 0 24px;
   font-size: 0.9375rem;
   line-height: 1.55;
-  color: var(--muted);
+  color: var(--text-2);
 }
 .login-action {
   display: flex;
@@ -101,9 +98,9 @@
 }
 .login-note {
   margin: 12px 0 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   text-align: center;
-  color: var(--muted);
+  color: var(--faint);
 }
 .login-facts {
   display: grid;
@@ -112,7 +109,8 @@
   padding: 20px 0 0;
   border-top: 1px solid var(--line);
   list-style: none;
-  font-size: 0.875rem;
+  font-size: 0.8125rem;
+  color: var(--muted);
 }
 .login-facts li {
   display: flex;
@@ -138,7 +136,7 @@
 }
 .login-facts .stat-icon {
   display: grid;
-  color: var(--accent);
+  color: var(--faint);
 }
 .login-action .icon {
   width: 1.1em;
@@ -152,10 +150,10 @@
 .login-disclaimer {
   max-width: 440px;
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: 0.75rem;
   line-height: 1.5;
   text-align: center;
-  color: var(--muted);
+  color: var(--faint);
 }
 @media (max-width: 480px) {
   .login-bar {
