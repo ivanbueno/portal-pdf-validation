@@ -13,6 +13,10 @@
   font-size: 16px;
   --panel: light-dark(#fff, #192334);
   --muted: light-dark(#5c697b, #aebcd0);
+  /* Text tiers: --text-2 sits between body text and --muted, --faint below
+     --muted. Both keep AA contrast on --panel and --soft. */
+  --text-2: light-dark(#34425a, #cbd5e3);
+  --faint: light-dark(#667387, #8e9cb2);
   --line: light-dark(#dce3ec, #35445a);
   --accent: light-dark(#245dab, #93bcff);
   --soft: light-dark(#edf3fc, #22354f);
@@ -202,9 +206,9 @@ h3 {
   border: 0;
   border-radius: 0;
   background: none;
-  color: var(--accent);
+  color: var(--faint);
   font-size: 1.05rem;
-  font-weight: 700;
+  font-weight: 400;
   line-height: 1;
 }
 .stat-card.good .stat-icon {
@@ -219,10 +223,12 @@ h3 {
 }
 .stat-card strong {
   font-size: 1.05rem;
+  font-weight: 700;
   line-height: 1.2;
 }
 .stat-card > div > span {
-  font-weight: 500;
+  color: var(--muted);
+  font-weight: 400;
   font-size: 0.875rem;
 }
 .section-head {
@@ -232,8 +238,13 @@ h3 {
 #workspace > .section-head {
   margin-bottom: 14px;
 }
-#workspace > .section-head .eyebrow {
-  color: var(--accent);
+#workspace > .section-head .eyebrow,
+.validation-options legend {
+  color: var(--faint);
+  font-size: 0.6875rem;
+  font-weight: 650;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 #workspace > .section-head .pill {
   display: none;
@@ -282,8 +293,10 @@ h3 {
 }
 .drop strong {
   font-size: 1.0625rem;
+  font-weight: 650;
 }
-.drop span:not(.upload-icon) {
+.drop > span:not(.upload-icon) {
+  color: var(--muted);
   font-size: 0.9375rem;
 }
 .browse {
@@ -337,10 +350,12 @@ h3 {
   block-size: auto;
 }
 .run-options > summary strong {
+  color: var(--text-2);
   font-size: 1rem;
+  font-weight: 600;
 }
 .options-icon {
-  color: var(--accent);
+  color: var(--faint);
   font-size: 1.25rem;
 }
 .validation-options {
@@ -354,15 +369,18 @@ h3 {
 .validation-options legend {
   grid-column: 1 / -1;
   padding: 16px 0 4px;
-  font-size: 0.8125rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
 }
 .validation-options label {
   display: flex;
   align-items: center;
   gap: 10px;
+  color: var(--muted);
+}
+.validation-options strong {
+  font-weight: 500;
+}
+.validation-options label:has(:checked) {
+  color: var(--text-2);
 }
 .validation-options input {
   accent-color: var(--accent);
@@ -378,6 +396,8 @@ h3 {
   color: #fff;
   border-color: var(--brand);
   padding: 12px 20px;
+  font-size: 0.9375rem;
+  font-weight: 650;
 }
 .primary.is-submitting {
   display: inline-flex;
@@ -409,6 +429,38 @@ h3 {
 .muted {
   color: var(--muted);
   font-size: 0.8125rem;
+}
+/* Staged files: names lead, details recede, row actions stay low-key. */
+#staged-total {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.875rem;
+}
+#staging th {
+  color: var(--faint);
+  font-weight: 500;
+}
+#staging td {
+  color: var(--muted);
+}
+#staging td:first-child {
+  color: inherit;
+  font-weight: 500;
+}
+#staging button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border-color: transparent;
+  background: none;
+  color: var(--faint);
+  font-weight: 500;
+}
+#staging button:hover:not(:disabled) {
+  color: inherit;
+  background: var(--soft);
+}
+#staging td:last-child button {
+  margin-right: -10px;
 }
 .loading-message {
   display: inline-flex;
