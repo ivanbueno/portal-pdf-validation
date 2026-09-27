@@ -34,12 +34,17 @@ export function initTheme(...buttons) {
     else root.dataset.theme = theme;
     getComputedStyle(root).color; // Applies the new colors while transitions are off.
     root.classList.remove("theme-switching");
-    for (const button of buttons)
-      setIconLabel(button, THEME_ICONS[theme], `Theme: ${theme}`);
+    for (const button of buttons) {
+      if (button.dataset.themeChoice) {
+        button.setAttribute("aria-pressed", String(button.dataset.themeChoice === theme));
+      } else {
+        setIconLabel(button, THEME_ICONS[theme], `Theme: ${theme}`);
+      }
+    }
   }
   for (const button of buttons)
     button.onclick = () => {
-      theme = NEXT_THEME[theme];
+      theme = button.dataset.themeChoice || NEXT_THEME[theme];
       saveTheme(theme);
       apply();
     };

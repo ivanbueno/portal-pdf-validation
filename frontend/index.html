@@ -23,9 +23,18 @@
           </div>
         </div>
         <div class="account">
-          <span id="identity"></span
-          ><button id="signout" hidden>Sign out</button
-          ><button id="theme" aria-label="Theme: system"></button>
+          <span class="identity"><span aria-hidden="true" data-icon="person"></span><span id="identity"></span></span>
+          <div class="account-settings">
+            <button id="account-settings-toggle" class="icon-button" aria-label="Account settings" aria-haspopup="true" aria-expanded="false" aria-controls="account-settings-menu" data-icon="settings"></button>
+            <div id="account-settings-menu" class="account-menu" hidden>
+              <div class="theme-options" role="group" aria-label="Theme">
+                <button class="icon-button theme-choice" data-theme-choice="system" aria-label="Theme: system" title="System" data-icon="monitor"></button>
+                <button class="icon-button theme-choice" data-theme-choice="light" aria-label="Theme: light" title="Light" data-icon="sun"></button>
+                <button class="icon-button theme-choice" data-theme-choice="dark" aria-label="Theme: dark" title="Dark" data-icon="moon"></button>
+              </div>
+              <button id="signout" hidden><span aria-hidden="true" data-icon="log-out"></span>Sign out</button>
+            </div>
+          </div>
         </div>
       </header>
       <div

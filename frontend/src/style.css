@@ -213,6 +213,42 @@ header {
   max-width: 190px;
   overflow-wrap: anywhere;
 }
+.identity {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+.identity [data-icon] { display: inline-flex; flex: 0 0 auto; }
+.account-settings { position: relative; }
+.account-settings > .icon-button { min-width: 42px; }
+#account-settings-toggle {
+  border-color: transparent;
+  background: transparent;
+  transition: color 120ms ease, background-color 120ms ease;
+}
+#account-settings-toggle:hover {
+  color: var(--accent);
+  background: var(--soft);
+}
+.account-menu {
+  position: absolute;
+  z-index: 10;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 180px;
+  padding: 10px;
+  display: grid;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 18%);
+}
+.account-menu[hidden] { display: none; }
+.theme-options { display: flex; justify-content: center; gap: 6px; }
+.theme-choice[aria-pressed="true"] { background: var(--soft); color: var(--accent); box-shadow: inset 0 0 0 2px var(--accent); }
+.account-menu #signout { display: flex; align-items: center; justify-content: center; gap: 8px; }
 h2 {
   font-size: 1.5rem;
   letter-spacing: -0.035em;
