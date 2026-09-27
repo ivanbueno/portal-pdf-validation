@@ -77,7 +77,7 @@ The real-engine tests skip when `PDF_VERAPDF_JAR` is unavailable. The emulator t
 
 ## Deploy
 
-See [Azure deployment](docs/azure.md) for Entra registration, infrastructure, permissions, OIDC deployment, observability, and smoke tests. Deployment templates and workflows are included; no Azure resources are provisioned by creating this project.
+See [Azure deployment](docs/azure-ci.md) for Entra registration, infrastructure, permissions, OIDC deployment, observability, and smoke tests. Deployment templates and workflows are included; no Azure resources are provisioned by creating this project.
 
 See [API guide](docs/api.md), [Python client](scripts/validate.py), and [attribution](licenses/NOTICE.md).
 
