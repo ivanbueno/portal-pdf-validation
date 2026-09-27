@@ -9,7 +9,8 @@ from .cli import run
 from .config import DISCLAIMER, MAX_ATTEMPTS, PROCESSING, Status, outcome
 from .events import log_event
 from .domain import input_blob, prefix, requested_profiles, transition_processing
-from .services.grouping import group_issues, issue_view
+from .services.grouping import group_issues
+from .services.reports import summary, write_pages
 from .services.runner import ValidationError, profile_error, run_profile
 from .storage import Conflict
 
@@ -119,9 +120,7 @@ def summarize(doc_id, results):
         status=status,
         passed=passed,
         page_count=page_count,
-        profile_summaries=json.dumps(
-            [{k: v for k, v in r.items() if k not in {"issues", "page_count"}} for r in results]
-        ),
+        profile_summaries=json.dumps([summary(result) for result in results]),
     )
     return report, fields
 
@@ -129,10 +128,9 @@ def summarize(doc_id, results):
 def publish(store, doc, results, raw_reports):
     """Store the report and point the document at it, unless this attempt was superseded."""
     report, fields = summarize(doc["id"], results)
-    names = {"report": run_prefix(doc) + "report.json", "issues": run_prefix(doc) + "issues.json"}
+    names = {"report": run_prefix(doc) + "report.json"}
     store.put(names["report"], json.dumps(report).encode())
-    # The portal pages through this small view instead of downloading the full report.
-    store.put(names["issues"], json.dumps(issue_view(report["issue_groups"])).encode())
+    names["report_index"] = write_pages(store, run_prefix(doc), report)
     # Save against the claim's ETag: deletion, a lease sweep, or a newer attempt changed the row
     # and must win this race. No read beforehand: the conditional write is the ownership check.
     try:

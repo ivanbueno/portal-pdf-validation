@@ -41,6 +41,7 @@ flowchart LR
 - ETag claims and attempt-specific report paths prevent duplicate messages, stale workers, and deletion races from publishing the wrong result. Queue delivery is at least once, not exactly once.
 - Each queued document is its own durable outbox. Maintenance retries undispatched work and recovers expired worker leases. Maximum three processing attempts for infrastructure failures; deterministic validation failures are not retried.
 - Every file produces separate profile results. A processing error is distinct from a nonconforming PDF, and a successful profile report survives another profile's failure.
+- Fast portal polls read only active metadata; document lists use stable cursors, and new report pages read only their intersecting stored chunks. Full JSON/XML downloads stream from storage. Exact workspace totals and filename filtering still require scanning live metadata for the owner.
 - One worker processes one PDF and runs profiles sequentially. Azure starts with at most four executions, each 2 vCPU/4 GiB, a 2 GiB JVM heap, five minutes per profile, and a 20 MiB combined stdout/stderr limit per profile.
 
 ## Develop and verify

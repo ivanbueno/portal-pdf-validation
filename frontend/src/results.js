@@ -27,6 +27,10 @@ let documents = [],
   // JSON of the last rendered rows; unchanged polls skip the DOM rebuild.
   renderedSignature = "",
   refreshController,
+  nextCursor,
+  lastFilters,
+  lastActivity = "",
+  lastFullRefresh = 0,
   pollDelay = 2500,
   pollTimer,
   searchTimer;
@@ -128,7 +132,7 @@ function renderProfileOutcomes(d) {
     const profile = profileIds[alias] || alias;
     const result = d.profiles?.find((r) => r.profile === profile);
     const resultStatus = result?.status || d.status;
-    const issueCount = result?.summary?.errors ?? result?.issue_total;
+    const issueCount = result?.summary?.errors;
     const line = node("div", undefined, `profile-line ${resultStatus}`);
     line.setAttribute(
       "aria-label",
@@ -259,7 +263,14 @@ function cancelRefresh() {
   refreshController?.abort();
 }
 
-export async function refresh() {
+const activitySignature = (items = []) =>
+  JSON.stringify(
+    items
+      .map((item) => [item.id, item.status, item.attempts, item.expires])
+      .sort((a, b) => a[0].localeCompare(b[0])),
+  );
+
+export async function refresh({ append = false, activityOnly = false } = {}) {
   cancelRefresh();
   clearTimeout(searchTimer);
   const controller = (refreshController = new AbortController());
@@ -268,27 +279,51 @@ export async function refresh() {
     q: $("search").value.trim(),
     status: $("filter").value,
   });
-  // Fetch only the rows on screen; summary cards use server-wide totals.
-  const collected = [];
-  let data;
+  const filters = params.toString();
+  append = append && !!nextCursor && filters === lastFilters;
+  const collected = append ? [...documents] : [];
+  if (append) params.set("cursor", nextCursor);
+  let data, firstPage;
   try {
+    // Fast polls transfer only active metadata. Reconcile the whole workspace
+    // every 30 seconds to discover external deletions, expirations, and uploads.
+    if (
+      activityOnly &&
+      lastFullRefresh &&
+      Date.now() - lastFullRefresh < 30000
+    ) {
+      const activity = await api("/documents/activity", { signal });
+      if (signal.aborted) return;
+      if (activitySignature(activity.items) === lastActivity) {
+        pollDelay = activity.items.length ? 2500 : 15000;
+        return;
+      }
+    }
     do {
-      params.set("offset", collected.length);
       params.set(
         "limit",
         Math.min(config.maxFiles, documentLimit - collected.length),
       );
       data = await api(`/documents?${params}`, { signal });
       if (signal.aborted) return;
+      firstPage ||= data;
       collected.push(...data.items);
+      if (data.next_cursor) params.set("cursor", data.next_cursor);
     } while (
+      data.next_cursor &&
       data.items.length &&
-      collected.length < Math.min(documentLimit, data.matching)
+      collected.length < documentLimit
     );
     documents = collected;
-    stats = data;
-    $("load-more").hidden = data.matching <= documentLimit;
-    $("delete-all").hidden = !data.total;
+    stats = firstPage;
+    nextCursor = data.next_cursor;
+    lastFilters = filters;
+    if (!append) {
+      lastActivity = activitySignature(stats.activity);
+      lastFullRefresh = Date.now();
+    }
+    $("load-more").hidden = !nextCursor;
+    $("delete-all").hidden = !stats.total;
     renderResults();
     pollDelay = stats.active_ids.length ? 2500 : 15000;
   } catch (error) {
@@ -307,7 +342,7 @@ export async function refresh() {
 export function poll() {
   cancelRefresh();
   if (document.visibilityState === "visible") {
-    return refresh().catch(() => {});
+    return refresh({ activityOnly: true }).catch(() => {});
   }
   pollTimer = setTimeout(poll, pollDelay);
 }
@@ -428,7 +463,7 @@ export function initResults() {
   $("filter").onchange = () => refresh().catch(showError);
   $("load-more").onclick = () => {
     documentLimit += PAGE_SIZE;
-    refresh().catch(showError);
+    refresh({ append: true }).catch(showError);
   };
   $("confirm-cancel").onclick = () => $("confirm").close();
   $("delete-all").onclick = confirmDeleteAll;

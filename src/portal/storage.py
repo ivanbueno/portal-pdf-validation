@@ -184,7 +184,7 @@ class Storage:
         with open(target, "wb") as stream:
             self.blob(name, snapshot).download_blob().readinto(stream)
 
-    def stream(self, name, snapshot):
+    def stream(self, name, snapshot=None):
         return self.blob(name, snapshot).download_blob().chunks()
 
     def put(self, name, data, content_type="application/json"):

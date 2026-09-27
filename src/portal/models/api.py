@@ -42,12 +42,15 @@ class FileInput(BaseModel):
         return value
 
 
-class ProfileResult(BaseModel):
+class ProfileSummary(BaseModel):
     profile: ProfileId
     status: _literal(TERMINAL)
     passed: bool | None
     summary: ValidationSummary | None = None
     error: str | None = None
+
+
+class ProfileResult(ProfileSummary):
     issues: list[Issue] = Field(default_factory=list)
     issue_total: int = 0
 
@@ -56,7 +59,7 @@ class DocumentView(BaseModel):
     id: str
     page_count: int | None = None
     pdf_available: bool = False
-    profiles: list[ProfileResult] = Field(default_factory=list)
+    profiles: list[ProfileSummary] = Field(default_factory=list)
     validation_profiles: list[ProfileAlias] = Field(
         default_factory=lambda: [PROFILES[profile].alias for profile in DEFAULT_PROFILES]
     )
@@ -74,6 +77,17 @@ class DocumentView(BaseModel):
     upload_expires: float | None = None
 
 
+class DocumentActivity(BaseModel):
+    id: str
+    status: _literal(("queued", "running"))
+    attempts: int
+    expires: float
+
+
+class ActivityPage(BaseModel):
+    items: list[DocumentActivity]
+
+
 class DocumentPage(BaseModel):
     items: list[DocumentView]
     total: int
@@ -82,6 +96,8 @@ class DocumentPage(BaseModel):
     passed_by_profile: dict[ProfileId, int]
     pages: int
     active_ids: list[str]
+    activity: list[DocumentActivity]
+    next_cursor: str | None = None
 
 
 class DocumentDetail(DocumentView):

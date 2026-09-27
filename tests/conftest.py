@@ -77,8 +77,8 @@ class MemoryStorage:
     def download(self, name, target, snapshot=None):
         Path(target).write_bytes(self.objects[(name, snapshot)] if snapshot else self.objects[name])
 
-    def stream(self, name, snapshot):
-        return iter([self.objects[(name, snapshot)]])
+    def stream(self, name, snapshot=None):
+        return iter([self.objects[(name, snapshot)] if snapshot else self.objects[name]])
 
     def purge(self, prefix):
         self.objects = {

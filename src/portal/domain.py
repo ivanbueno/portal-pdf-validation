@@ -2,7 +2,7 @@ import json
 import hashlib
 import time
 from azure.core.exceptions import ResourceNotFoundError, ResourceModifiedError
-from .config import ACTIVE, PROCESSING, PROFILES, TERMINAL, Status
+from .config import ACTIVE, PROFILES, Status
 from .storage import Conflict
 
 
@@ -57,7 +57,7 @@ def is_live(row, now=None):
     return row["status"] != Status.DELETED and row["expires"] > (now or time.time())
 
 
-# Everything `public`, `matches`, and `document_stats` read from a listed row.
+# Metadata used by the workspace list and its totals.
 LISTED = sorted(PUBLIC | {"requested_profiles", "profile_summaries", "snapshot"})
 
 
@@ -81,21 +81,6 @@ def matches(row, query, status):
     if status == "active":
         return row["status"] in ACTIVE
     return status == "all" or row["status"] == status
-
-
-def document_stats(rows):
-    """Workspace totals, so clients never page through every document for summary cards."""
-    passed = dict.fromkeys(PROFILES, 0)
-    for row in rows:
-        for summary in profile_summaries(row):
-            if summary.get("status") == Status.PASSED and summary.get("profile") in passed:
-                passed[summary["profile"]] += 1
-    return {
-        "processed": sum(row["status"] in TERMINAL for row in rows),
-        "passed_by_profile": passed,
-        "pages": sum(row.get("page_count") or 0 for row in rows),
-        "active_ids": [row["id"] for row in rows if row["status"] in PROCESSING],
-    }
 
 
 def prefix(doc):

@@ -10,6 +10,17 @@ const doc = {
   validation_profiles: ["wcag"],
   profiles: [],
 };
+const activity = (item = doc) =>
+  ["queued", "running"].includes(item.status)
+    ? [
+        {
+          id: item.id,
+          status: item.status,
+          attempts: item.attempts,
+          expires: item.expires,
+        },
+      ]
+    : [];
 const listing = (item = doc) => ({
   items: [item],
   total: 1,
@@ -17,7 +28,8 @@ const listing = (item = doc) => ({
   processed: 0,
   passed_by_profile: {},
   pages: 0,
-  active_ids: [item.id],
+  active_ids: activity(item).map((row) => row.id),
+  activity: activity(item),
 });
 const groups = (offset = 0) => ({
   items: [],
@@ -28,6 +40,9 @@ const groups = (offset = 0) => ({
 
 test.beforeEach(async ({ page }) => {
   await page.clock.install();
+  await page.route("**/api/v1/documents/activity", (route) =>
+    route.fulfill({ json: { items: activity() } }),
+  );
   await page.route("**/api/config", (route) =>
     route.fulfill({
       json: {
@@ -54,16 +69,20 @@ test("reconnect cancels the pending poll and leaves one scheduler", async ({
   const requests = [];
   let held;
   page.on("requestfailed", (request) => {
-    if (request.url().includes("/documents?")) requests.push("cancelled");
+    if (request.url().includes("/documents")) requests.push("cancelled");
   });
   let calls = 0;
   await page.route("**/api/v1/documents?*", async (route) => {
+    calls++;
+    await route.fulfill({ json: listing() });
+  });
+  await page.route("**/api/v1/documents/activity", async (route) => {
     calls++;
     if (calls === 2)
       await new Promise((resolve) => {
         held = resolve;
       });
-    await route.fulfill({ json: listing() });
+    await route.fulfill({ json: { items: activity() } });
   });
   await page.goto("/");
   await expect(page.locator("#row-tracked")).toBeVisible();
@@ -86,7 +105,7 @@ test("search cancels obsolete pagination without showing an error", async ({
   const offsets = [];
   await page.route("**/api/v1/documents?*", async (route) => {
     const params = new URL(route.request().url()).searchParams;
-    offsets.push([params.get("q"), params.get("offset")]);
+    offsets.push([params.get("q"), params.get("cursor")]);
     if (!params.get("q")) {
       await new Promise((resolve) => {
         held = resolve;
@@ -107,8 +126,8 @@ test("search cancels obsolete pagination without showing an error", async ({
   held();
   await expect(page.locator("#notice")).not.toContainText("abort");
   expect(offsets).toEqual([
-    ["", "0"],
-    ["new", "0"],
+    ["", null],
+    ["new", null],
   ]);
 });
 
@@ -116,6 +135,9 @@ test("expanded reports refresh on completion and retain their issues page", asyn
   page,
 }) => {
   let current = { ...doc };
+  await page.route("**/api/v1/documents/activity", (route) =>
+    route.fulfill({ json: { items: activity(current) } }),
+  );
   const offsets = [];
   await page.route("**/api/v1/documents?*", (route) =>
     route.fulfill({ json: listing(current) }),
@@ -168,7 +190,7 @@ test("expanded reports refresh on completion and retain their issues page", asyn
   await page.clock.runFor(2500);
   expect(offsets).toEqual([0, 0, 100]);
   current = { ...current, error: "Updated result" };
-  await page.clock.runFor(2500);
+  await page.clock.fastForward(30000);
   await expect(page.locator("#details-tracked")).toContainText(
     "Updated result",
   );
@@ -183,6 +205,9 @@ test("completion cancels an obsolete detail request", async ({ page }) => {
   let current = { ...doc },
     held,
     calls = 0;
+  await page.route("**/api/v1/documents/activity", (route) =>
+    route.fulfill({ json: { items: activity(current) } }),
+  );
   await page.route("**/api/v1/documents?*", (route) =>
     route.fulfill({ json: listing(current) }),
   );
@@ -211,6 +236,55 @@ test("completion cancels an obsolete detail request", async ({ page }) => {
     "Results will appear",
   );
   expect(calls).toBe(2);
+});
+
+test("unchanged activity avoids list reads until periodic reconciliation", async ({
+  page,
+}) => {
+  let lists = 0,
+    checks = 0;
+  await page.route("**/api/v1/documents?*", (route) => {
+    lists++;
+    return route.fulfill({ json: listing() });
+  });
+  await page.route("**/api/v1/documents/activity", (route) => {
+    checks++;
+    return route.fulfill({ json: { items: activity() } });
+  });
+  await page.goto("/");
+  await expect(page.locator("#row-tracked")).toBeVisible();
+  for (let i = 1; i <= 3; i++) {
+    await page.clock.runFor(2500);
+    await expect.poll(() => checks).toBe(i);
+  }
+  expect(lists).toBe(1);
+  await page.clock.fastForward(30000);
+  await expect.poll(() => lists).toBe(2);
+});
+
+test("load more requests only the next cursor page", async ({ page }) => {
+  const cursors = [];
+  await page.route("**/api/v1/documents?*", (route) => {
+    const cursor = new URL(route.request().url()).searchParams.get("cursor");
+    cursors.push(cursor);
+    return route.fulfill({
+      json: {
+        ...listing(),
+        total: 21,
+        matching: 21,
+        items: cursor
+          ? [{ ...doc, id: "last", name: "last.pdf" }]
+          : Array.from({ length: 20 }, (_, i) => ({ ...doc, id: `doc-${i}` })),
+        next_cursor: cursor ? null : "next-page",
+      },
+    });
+  });
+  await page.goto("/");
+  await expect(page.locator(".document-row")).toHaveCount(20);
+  await page.locator("#load-more").click();
+  await expect(page.locator(".document-row")).toHaveCount(21);
+  expect(cursors).toEqual([null, "next-page"]);
+  await expect(page.locator("#load-more")).toBeHidden();
 });
 
 test("closing a report cancels its pending detail request", async ({

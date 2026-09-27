@@ -30,7 +30,7 @@ curl --fail-with-body -X PUT "$UPLOAD_URL" -H 'x-ms-blob-type: BlockBlob' \
   -H 'Content-Type: application/pdf' --data-binary "@$PDF_PATH"
 curl --fail-with-body -X POST "$BASE/api/v1/documents/$DOCUMENT_ID/submit" \
   -H "Authorization: Bearer $TOKEN"
-curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID" -H "Authorization: Bearer $TOKEN"
+curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/status" -H "Authorization: Bearer $TOKEN"
 # Repeat polling with backoff until the document is passed, failed, or error.
 curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/reports/json" \
   -H "Authorization: Bearer $TOKEN" -o report.json
@@ -79,6 +79,8 @@ Submission is idempotent by document ID; no additional key is needed. Missing/in
 | `POST /documents/{id}/upload-url` | Renews a grant for an unsubmitted document. |
 | `GET /documents?offset=0&limit=20&q=&status=all` | Lists owned, unexpired documents, newest first; limit up to 200 (one portal selection). `q` matches filenames case-insensitively; `status` is `all`, `active`, `passed`, `failed`, or `error`. `matching` counts the filtered documents. Workspace totals ignore pagination and filters: `total` documents, `processed` completed documents, `passed_by_profile` documents passing each profile keyed by profile ID, `pages` validated, and `active_ids` for queued or running documents. |
 | `GET /documents/{id}?offset=0&limit=100` | Per-profile results, summaries, paginated issues, and `issue_total`; limit up to 500. |
+| `GET /documents/{id}/status` | Current document metadata and profile summaries, without reading report blobs. Use for integration polling. |
+| `GET /documents/activity` | Compact `items` containing only `id`, `status`, `attempts`, and `expires` for the caller's live queued/running documents. No report reads, workspace totals, or filename sorting. |
 | `GET /documents/{id}/pdf` | Owner-protected inline PDF stream from the submitted immutable snapshot; 409 before submission. |
 | `GET /documents/{id}/issues?offset=0&limit=100` | Groups checks by specification/clause/test across profiles before pagination; returns items and total. Each group includes profile counts and up to 100 occurrences for display. |
 | `GET /documents/{id}/reports/json` | Complete normalized results and consolidated `issue_groups`, including every occurrence. |
@@ -87,6 +89,16 @@ Submission is idempotent by document ID; no additional key is needed. Missing/in
 | `DELETE /documents` | Deletes every document the caller owns, including unfinished ones, as `DELETE /documents/{id}` would; returns `{"deleted": count}`. A 409 means a document changed meanwhile: retry, and already deleted documents are skipped. |
 
 Document states: `uploading`, `queued`, `running`, `passed`, `failed`, `error`. A completed nonconforming file is `failed`, not an HTTP or infrastructure error. On engine failure, profile `passed` is null and `status` is `error`; the document's overall `passed` is false. Rule locations come from veraPDF; page is null when the engine does not supply an unambiguous page number.
+
+### Pagination and polling
+
+Document lists return `next_cursor` when more matching rows remain. Pass it as `cursor` on the next request with the same `q` and `status` filters. The cursor continues after the last `(created, id)` pair, so inserting newer documents or deleting earlier rows does not shift the next page. It is not a frozen snapshot: changed filters or expiry can still change membership. Existing offset pagination remains supported; do not combine a cursor with a nonzero offset. Counts describe the current whole workspace, independent of the cursor. Cursor pages retain only the requested rows during selection, but Table Storage still scans the owner's live metadata to apply search and compute exact totals.
+
+List responses also include `activity`, using the same shape as `/documents/activity`. The portal compares this compact state during fast polls and refreshes its document list when it changes. A periodic full refresh, normally every 30 seconds while visible, discovers changes to completed documents, expired reservations, and work submitted elsewhere. “Load more” appends the next cursor page.
+
+`profiles` uses a summary contract (`profile`, `status`, `passed`, optional `summary` and `error`); it no longer adds empty `issues` arrays or an artificial zero `issue_total`. Only the detail response's `results` includes paginated `issues` and their true `issue_total`.
+
+New worker output includes an immutable index and separate chunks of 500 profile issues or 100 display groups. A detail page reads the index and only the chunks intersecting its offset/limit. Older reports fall back to their existing monolithic blobs until they expire. Deploy the API reader before the new worker when rolling versions independently. Complete JSON and XML exports retain their content and stream from storage.
 
 Timestamps are Unix seconds. Limits use bytes: 209715200 per file. The portal accepts up to 200 files and 2147483648 bytes per selection; there is no batch resource or API aggregate limit. Actual content is checked during submission; encrypted or structurally malformed PDFs may be accepted as uploads and then finish with a processing error.
 

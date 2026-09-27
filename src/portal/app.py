@@ -1,4 +1,3 @@
-import json
 import logging
 import re
 import time
@@ -30,19 +29,19 @@ from .domain import (
     submit,
     get_owned,
     input_blob,
-    live_documents,
     document_view,
-    document_stats,
-    matches,
     public,
     raw_reports,
     tombstone,
 )
 from .events import configure_logging, log_event
 from .storage import Storage, Conflict
+from .services.documents import document_activity, document_page
+from .services.reports import read_groups, read_results
 from .middleware import MetadataBodyLimit
 from .models.api import (
     DeletedDocuments,
+    ActivityPage,
     DocumentDetail,
     DocumentPage,
     DocumentView,
@@ -232,14 +231,18 @@ def create_app(settings=None, storage=None):
         limit: Limit(MAX_FILES) = 20,
         q: str = Query("", max_length=240),
         status: StatusFilter = "all",
+        cursor: str | None = Query(None, min_length=1, max_length=2048),
     ):
-        now = time.time()
-        rows = live_documents(storage, principal, now)
-        rows.sort(key=lambda r: (r["created"], r["id"]), reverse=True)
-        query = q.strip().casefold()
-        matching = [r for r in rows if matches(r, query, status)]
-        items = [public(row) for row in matching[offset : offset + limit]]
-        return {"items": items, "total": len(rows), "matching": len(matching)} | document_stats(rows)
+        try:
+            return document_page(
+                storage, principal, time.time(), offset, limit, q.strip().casefold(), status, cursor
+            )
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
+
+    @app.get("/api/v1/documents/activity", response_model=ActivityPage)
+    def activity(principal: Owner):
+        return {"items": document_activity(storage, principal, time.time())}
 
     @app.post("/api/v1/documents/{doc_id}/upload-url", response_model=UploadGrant)
     def renew_upload(doc: Document):
@@ -248,17 +251,15 @@ def create_app(settings=None, storage=None):
         url, expires = storage.upload_url(input_blob(doc))
         return {"upload_url": url, "upload_expires": expires}
 
-    def published(doc, blob, unfinished):
-        """A JSON blob the worker published for the document, or `unfinished` before it has."""
-        return json.loads(storage.read(doc[blob])) if doc.get(blob) else unfinished
+    @app.get(
+        "/api/v1/documents/{doc_id}/status", response_model=DocumentView, response_model_exclude_none=True
+    )
+    def document_status(doc: Document):
+        return public(doc)
 
     @app.get("/api/v1/documents/{doc_id}", response_model=DocumentDetail)
     def get_document(doc: Document, offset: Offset = 0, limit: Limit(500) = 100):
-        result = published(doc, "report", {"results": [], "disclaimer": DISCLAIMER})
-        for profile in result["results"]:
-            issues = profile.get("issues", [])
-            profile["issue_total"] = len(issues)
-            profile["issues"] = issues[offset : offset + limit]
+        result = read_results(storage, doc, offset, limit)
         return public(doc) | result | {"offset": offset, "limit": limit}
 
     @app.get("/api/v1/documents/{doc_id}/pdf")
@@ -277,14 +278,7 @@ def create_app(settings=None, storage=None):
 
     @app.get("/api/v1/documents/{doc_id}/issues", response_model=IssuePage)
     def grouped_issues(doc: Document, offset: Offset = 0, limit: Limit(100) = 100):
-        # The worker stores the groups with the report; unfinished documents have none yet.
-        groups = published(doc, "issues", [])
-        return {
-            "items": groups[offset : offset + limit],
-            "total": len(groups),
-            "offset": offset,
-            "limit": limit,
-        }
+        return read_groups(storage, doc, offset, limit)
 
     @app.get("/api/v1/documents/{doc_id}/reports/{format}")
     def download_report(doc: Document, format: Literal["json", "xml"], profile: ProfileId | None = None):
@@ -293,8 +287,8 @@ def create_app(settings=None, storage=None):
             raise HTTPException(409, "Report not available yet")
         if format == "json":
             # Stored with its issue groups, so it is served as published.
-            return Response(
-                storage.read(doc["report"]),
+            return StreamingResponse(
+                storage.stream(doc["report"]),
                 media_type="application/json",
                 headers={"Content-Disposition": f'attachment; filename="{doc_id}.json"'},
             )
@@ -303,8 +297,8 @@ def create_app(settings=None, storage=None):
         raw = raw_reports(doc)
         if profile not in raw:
             raise HTTPException(404, "XML report unavailable for this profile")
-        return Response(
-            storage.read(raw[profile]),
+        return StreamingResponse(
+            storage.stream(raw[profile]),
             media_type="application/xml",
             headers={"Content-Disposition": f'attachment; filename="{doc_id}-{profile}.xml"'},
         )

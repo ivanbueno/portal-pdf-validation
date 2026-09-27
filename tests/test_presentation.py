@@ -119,8 +119,9 @@ def test_issue_views_read_groups_stored_at_publish(client, store, settings, subm
     real, reads = store.read, []
     monkeypatch.setattr(store, "read", lambda name: reads.append(name.rsplit("/", 1)[1]) or real(name))
     groups = client.get(base + "/issues").json()
-    assert reads == ["issues.json"]
+    assert reads == ["index.json", "0.json"]
     assert groups["items"][0]["count"] == 300 and len(groups["items"][0]["occurrences"]) == 100
     report = client.get(base + "/reports/json").json()
-    assert reads[1:] == ["report.json"] and len(report["issue_groups"][0]["occurrences"]) == 300
+    # Downloads stream directly instead of buffering through store.read.
+    assert reads == ["index.json", "0.json"] and len(report["issue_groups"][0]["occurrences"]) == 300
     assert "issue_groups" not in client.get(base).json()

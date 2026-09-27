@@ -42,7 +42,7 @@ def main():
         delay = 2
         while pending:
             for doc_id in list(pending):
-                response = api.get(f"documents/{doc_id}")
+                response = api.get(f"documents/{doc_id}/status")
                 response.raise_for_status()
                 doc = response.json()
                 if doc["status"] not in finished:
