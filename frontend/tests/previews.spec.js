@@ -130,6 +130,15 @@ test("two expanded documents render real PDFs and reuse their sessions", async (
   page,
 }) => {
   const fetches = [];
+  const libraries = [];
+  page.on("request", (request) => {
+    if (
+      /pdf-previews|pdf-document|pdf-structure|pdfjs-dist|pdf-lib/.test(
+        request.url(),
+      )
+    )
+      libraries.push(request.url());
+  });
   await page.route("**/api/v1/documents/*/pdf", (route) => {
     fetches.push(route.request().url());
     return route.fulfill({
@@ -140,11 +149,17 @@ test("two expanded documents render real PDFs and reuse their sessions", async (
     });
   });
   await page.goto("/");
+  await expect(page.locator("#toggle-a")).toBeVisible();
+  expect(libraries).toEqual([]);
   for (const id of ["a", "b"]) {
     await page.locator(`#toggle-${id}`).click();
     await page.locator(`#details-${id} .occurrences > summary`).click();
   }
   await expect(page.locator(".preview-thumb")).toHaveCount(4);
+  expect(libraries.some((url) => url.includes("pdf-previews"))).toBe(true);
+  expect(libraries.some((url) => /pdf-structure|pdf-lib/.test(url))).toBe(
+    false,
+  );
   expect(fetches.length).toBe(2);
   await page.locator("#details-a .preview-thumb").first().click();
   await expect(page.locator("#preview-note")).toContainText("Red box uses");
@@ -153,6 +168,94 @@ test("two expanded documents render real PDFs and reuse their sessions", async (
   await page.locator("#toggle-a").click();
   await expect(page.locator("#details-a .preview-thumb")).toHaveCount(0);
   await expect(page.locator("#details-b .preview-thumb")).toHaveCount(2);
+});
+
+test("metadata checks do not load PDF libraries", async ({ page }) => {
+  const libraries = [];
+  page.on("request", (request) => {
+    if (
+      /pdf-previews|pdf-document|pdf-structure|pdfjs-dist|pdf-lib/.test(
+        request.url(),
+      )
+    )
+      libraries.push(request.url());
+  });
+  await page.route("**/api/v1/documents/a/issues?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            message: "Metadata issue",
+            count: 1,
+            profiles: ["wcag-2.2"],
+            occurrences: [
+              {
+                profile: "wcag-2.2",
+                message: "Missing metadata",
+                location: "root/metadata[0]",
+              },
+            ],
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page.locator("#toggle-a").click();
+  await page.locator("#details-a .occurrences > summary").click();
+  await expect(page.locator("#details-a")).toContainText(
+    "Document-level check; no page preview is available.",
+  );
+  expect(libraries).toEqual([]);
+});
+
+test("object locations load structure parsing on demand", async ({ page }) => {
+  const libraries = [];
+  page.on("request", (request) => {
+    if (/pdf-structure|pdf-lib/.test(request.url()))
+      libraries.push(request.url());
+  });
+  await page.route("**/api/v1/documents/a/pdf", (route) =>
+    route.fulfill({
+      contentType: "application/pdf",
+      path: fileURLToPath(
+        new URL("../../tests/fixtures/ua-pass.pdf", import.meta.url),
+      ),
+    }),
+  );
+  await page.route("**/api/v1/documents/a/issues?*", (route) =>
+    route.fulfill({
+      json: {
+        items: [
+          {
+            message: "Structure issue",
+            count: 1,
+            profiles: ["wcag-2.2"],
+            occurrences: [
+              {
+                profile: "wcag-2.2",
+                page: 1,
+                message: "Unknown object",
+                location: "(999 0 obj)",
+              },
+            ],
+          },
+        ],
+        total: 1,
+        offset: 0,
+        limit: 100,
+      },
+    }),
+  );
+  await page.goto("/");
+  await page.locator("#toggle-a").click();
+  expect(libraries).toEqual([]);
+  await page.locator("#details-a .occurrences > summary").click();
+  await expect(page.locator("#details-a .preview-thumb")).toHaveCount(1);
+  expect(libraries.some((url) => url.includes("pdf-structure"))).toBe(true);
 });
 
 test("preview caches enforce count and byte limits", async ({ page }) => {

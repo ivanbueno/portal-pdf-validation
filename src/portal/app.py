@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 import time
 import uuid
 from urllib.parse import quote
@@ -53,6 +54,8 @@ from .models.api import (
 )
 
 log = logging.getLogger("portal")
+# Vite's default content hash is eight URL-safe characters.
+HASHED_ASSET = re.compile(r"^/assets/[^/]+-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$")
 
 # Paging parameters of the list endpoints; each endpoint sets its own default limit.
 Offset = Annotated[int, Query(ge=0)]
@@ -62,13 +65,15 @@ def Limit(maximum):
     return Annotated[int, Query(ge=1, le=maximum)]
 
 
-def standard_headers(request):
+def standard_headers(request, status=500):
     """Headers on every response, including the 500 for an unexpected failure."""
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Cache-Control": "no-store",
     }
+    if status in {200, 206, 304} and HASHED_ASSET.fullmatch(request.url.path):
+        headers["Cache-Control"] = "public, max-age=31536000, immutable"
     if request_id := getattr(request.state, "request_id", None):
         headers["X-Request-ID"] = request_id
     # A client retries a failed create with this key rather than creating a duplicate.
@@ -127,7 +132,7 @@ def create_app(settings=None, storage=None):
             # `unexpected` sends the 500 from outside this middleware; the server logs the traceback.
             logged(500, logging.ERROR, error=type(exc).__name__)
             raise
-        response.headers.update(standard_headers(request))
+        response.headers.update(standard_headers(request, response.status_code))
         logged(response.status_code)
         return response
 

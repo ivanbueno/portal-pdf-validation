@@ -1,7 +1,6 @@
 // Document sessions own PDF workers, source bytes, and bounded per-page caches.
 import * as pdfjs from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { PDFDocument } from "@cantoo/pdf-lib";
 import { validRect } from "./pdf-geometry.js";
 import { documentSessions } from "./pdf-sessions.js";
 import { api } from "./api.js";
@@ -54,17 +53,6 @@ export const withDocument = documentSessions((docId) => {
     },
   };
 });
-
-// The raw object graph (pdf-lib), parsed on first use for structure lookups.
-// The empty password decrypts files that only restrict permissions, whose
-// structure trees are otherwise unreadable; unencrypted files ignore it.
-export function structure(source) {
-  source.structure ||= PDFDocument.load(source.data.slice(), {
-    updateMetadata: false,
-    password: "",
-  });
-  return source.structure;
-}
 
 async function scanMarkedContent(pdf, pageNumber) {
   const page = await pdf.getPage(pageNumber);

@@ -1,10 +1,17 @@
 // Page-preview thumbnails for issue locations and the enlarged preview dialog.
 import { isDocumentLevel } from "./pdf-locations.js";
-import { renderOccurrencePreview } from "./pdf-previews.js";
 import { $, node } from "./ui.js";
 
 const THUMBNAIL_WIDTH = 320;
 const ENLARGED_WIDTH = 1100;
+
+// Keep PDF rendering libraries out of workspace startup and metadata-only checks.
+async function renderOccurrencePreview(docId, occurrence, width, signal) {
+  const renderer = await import("./pdf-previews.js");
+  signal.throwIfAborted();
+  return renderer.renderOccurrencePreview(docId, occurrence, width, signal);
+}
+
 let dialogRequest = 0,
   dialogController,
   detachOwner;

@@ -1,7 +1,14 @@
 // Bounds from the structure tree: veraPDF names a structure element, and the
 // marked content it owns gives the region to highlight.
-import { PDFArray, PDFDict, PDFName, PDFNumber, PDFRef } from "@cantoo/pdf-lib";
-import { markedContentRects, structure } from "./pdf-document.js";
+import {
+  PDFArray,
+  PDFDict,
+  PDFDocument,
+  PDFName,
+  PDFNumber,
+  PDFRef,
+} from "@cantoo/pdf-lib";
+import { markedContentRects } from "./pdf-document.js";
 import { unionRects } from "./pdf-geometry.js";
 import { objectNumbers } from "./pdf-locations.js";
 
@@ -51,7 +58,14 @@ function buildTree(pdf) {
 // Tree helpers per loaded document, built once rather than for every location.
 const trees = new WeakMap();
 function structureTree(source) {
-  if (!trees.has(source)) trees.set(source, structure(source).then(buildTree));
+  if (!trees.has(source)) {
+    // The empty password decrypts files that only restrict permissions.
+    source.structure ||= PDFDocument.load(source.data.slice(), {
+      updateMetadata: false,
+      password: "",
+    });
+    trees.set(source, source.structure.then(buildTree));
+  }
   return trees.get(source);
 }
 

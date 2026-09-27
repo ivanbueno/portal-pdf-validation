@@ -7,9 +7,14 @@ import {
 } from "./pdf-document.js";
 import { toViewportRect, unionRects, validRect } from "./pdf-geometry.js";
 import { contentItem, explicitBounds, objectNumbers } from "./pdf-locations.js";
-import { structureBounds } from "./pdf-structure.js";
 
 const HIGHLIGHT = "#df2020";
+
+async function structureBounds(source, occurrence) {
+  if (!objectNumbers(occurrence.location).length) return null;
+  const structure = await import("./pdf-structure.js");
+  return structure.structureBounds(source, occurrence);
+}
 
 async function explicitRegion(source, occurrence) {
   const bounds = explicitBounds(occurrence.location);
