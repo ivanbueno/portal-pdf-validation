@@ -1,4 +1,4 @@
-"""Immutable report pages. Legacy reports remain readable until retention expires."""
+"""Immutable report pages: an index with profile summaries, then fixed-size chunks of issues and groups."""
 
 import json
 from ..config import DISCLAIMER
@@ -58,41 +58,26 @@ def read_index(store, doc):
 
 
 def read_results(store, doc, offset, limit):
-    if doc.get("report_index"):
-        index, prefix = read_index(store, doc)
-        results = [
-            result
-            | {
-                "issues": read_slice(
-                    store,
-                    prefix,
-                    result["profile"],
-                    result["issue_total"],
-                    index["issue_chunk"],
-                    offset,
-                    limit,
-                )
-            }
-            for result in index["results"]
-        ]
-        return {"results": results, "disclaimer": index["disclaimer"]}
-    result = (
-        json.loads(store.read(doc["report"]))
-        if doc.get("report")
-        else {"results": [], "disclaimer": DISCLAIMER}
-    )
-    for profile in result["results"]:
-        issues = profile.get("issues", [])
-        profile.update(issue_total=len(issues), issues=issues[offset : offset + limit])
-    return result
+    # Documents without an index have not finished processing yet.
+    if not doc.get("report_index"):
+        return {"results": [], "disclaimer": DISCLAIMER}
+    index, prefix = read_index(store, doc)
+    results = [
+        result
+        | {
+            "issues": read_slice(
+                store, prefix, result["profile"], result["issue_total"], index["issue_chunk"], offset, limit
+            )
+        }
+        for result in index["results"]
+    ]
+    return {"results": results, "disclaimer": index["disclaimer"]}
 
 
 def read_groups(store, doc, offset, limit):
-    if doc.get("report_index"):
-        index, prefix = read_index(store, doc)
-        total = index["group_total"]
-        items = read_slice(store, prefix, "groups", total, index["group_chunk"], offset, limit)
-    else:
-        groups = json.loads(store.read(doc["issues"])) if doc.get("issues") else []
-        total, items = len(groups), groups[offset : offset + limit]
+    if not doc.get("report_index"):
+        return dict(items=[], total=0, offset=offset, limit=limit)
+    index, prefix = read_index(store, doc)
+    total = index["group_total"]
+    items = read_slice(store, prefix, "groups", total, index["group_chunk"], offset, limit)
     return dict(items=items, total=total, offset=offset, limit=limit)

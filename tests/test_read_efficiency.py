@@ -99,16 +99,9 @@ def test_report_pages_only_read_intersecting_chunks(client, store, settings, sub
     assert len(reads) == 1  # Only the small index for an out-of-range page.
 
 
-def test_legacy_reports_and_streamed_exports(client, store, settings, submitted, monkeypatch):
+def test_streamed_exports(client, store, settings, submitted, monkeypatch):
     process_document(store, settings, OWNER, submitted, failing_runner([ISSUE] * 3))
-    doc = store.get(OWNER, submitted)
-    report = json.loads(store.read(doc["report"]))
-    del doc["report_index"]
-    doc["issues"] = doc["report"].replace("report.json", "issues.json")
-    store.put(doc["issues"], json.dumps(report["issue_groups"]).encode())
-    store.save(doc)
-    assert len(client.get(f"{BASE}/{submitted}?offset=1&limit=1").json()["results"][0]["issues"]) == 1
-    assert client.get(f"{BASE}/{submitted}/issues").json()["total"] == 1
+    report = json.loads(store.read(store.get(OWNER, submitted)["report"]))
     monkeypatch.setattr(store, "read", lambda *args: pytest.fail("Download must stream"))
     assert client.get(f"{BASE}/{submitted}/reports/json").json() == report
     assert client.get(f"{BASE}/{submitted}/reports/xml?profile=pdfua-1").status_code == 200
