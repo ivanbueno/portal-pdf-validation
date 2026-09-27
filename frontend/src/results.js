@@ -141,6 +141,14 @@ function renderFileCell(d) {
   return cell;
 }
 
+// Each outcome's shape backs up its color, so it reads without either alone.
+const OUTCOME_ICONS = { passed: "check", failed: "x", error: "alert-triangle" };
+function outcomeState(status) {
+  const state = node("span", undefined, "profile-state");
+  state.append(icon(OUTCOME_ICONS[status] || "clock"), outcomeLabel(status));
+  return state;
+}
+
 function renderProfileOutcomes(d) {
   const cell = node("td", undefined, "profile-outcomes");
   for (const alias of d.validation_profiles) {
@@ -155,7 +163,7 @@ function renderProfileOutcomes(d) {
     );
     line.append(
       node("span", profileLabel(profile), "profile-name"),
-      node("span", outcomeLabel(resultStatus), "profile-state"),
+      outcomeState(resultStatus),
     );
     if (resultStatus !== "passed") {
       const running = d.status === "running";

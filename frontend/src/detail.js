@@ -3,6 +3,7 @@ import { api, config } from "./api.js";
 import { loadOccurrencePreviews } from "./previews-ui.js";
 import {
   action,
+  icon,
   node,
   outcomeLabel,
   plural,
@@ -149,9 +150,16 @@ function renderOccurrences(group, docId, signal) {
   return occurrences;
 }
 
+const SEVERITY_ICONS = {
+  critical: "alert-octagon",
+  major: "alert-triangle",
+  minor: "info",
+};
+
 // Screen readers hear "Severity: major", not a bare word among the tags.
-function tagBadge(kind, value, className) {
+function tagBadge(kind, value, className, iconName) {
   const badge = node("span", undefined, `issue-badge ${className}`);
+  if (iconName) badge.append(icon(iconName));
   badge.append(node("span", `${kind}: `, "sr-only"), value);
   return badge;
 }
@@ -180,6 +188,7 @@ function renderIssueGroup(group, docId, signal) {
         "Severity",
         group.severity,
         `severity-badge severity-${group.severity}`,
+        SEVERITY_ICONS[group.severity],
       ),
     );
   if (badges.childElementCount) identity.append(badges);

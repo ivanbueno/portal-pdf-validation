@@ -1,6 +1,9 @@
 // Inline SVG icons on a 24px grid, stroked in the current text color so they follow
 // the theme. Dependency-free like common.js, so the startup theme toggles can use them.
 const PATHS = {
+  "alert-octagon":
+    "M8.3 3h7.4L21 8.3v7.4L15.7 21H8.3L3 15.7V8.3zM12 8v4.5M12 16h.01",
+  "alert-triangle": "M12 3.5l9.5 16.5h-19zM12 10v4M12 17h.01",
   "arrow-right": "M5 12h14M13 6l6 6-6 6",
   check: "M5 12.5l4.5 4.5L19 7.5",
   "circle-check": "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM8.5 12.5l2.5 2.5 4.5-5",
@@ -10,6 +13,7 @@ const PATHS = {
   file: "M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5",
   files:
     "M8 7V5a2 2 0 0 1 2-2h7l4 4v10a2 2 0 0 1-2 2h-2M5 7h8a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z",
+  info: "M12 3a9 9 0 1 1 0 18 9 9 0 0 1 0-18zM12 11v5M12 8h.01",
   inbox: "M3 13l3-8h12l3 8v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 13h5l1 3h6l1-3h5",
   lock: "M6 11h12a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-8a1 1 0 0 1 1-1zM8 11V8a4 4 0 0 1 8 0v3",
   "log-out": "M10 4H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h4M15 8l4 4-4 4M19 12H9",

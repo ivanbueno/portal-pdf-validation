@@ -1151,6 +1151,16 @@ dialog::backdrop {
 .profile-line.error > span + span {
   border-left-color: color-mix(in srgb, var(--bad) 26%, var(--line));
 }
+.profile-line .profile-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.profile-line .profile-state .icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2.5;
+}
 .profile-line .profile-count {
   min-width: 30px;
   text-align: center;
@@ -1365,12 +1375,10 @@ dialog::backdrop {
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
-.severity-badge::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
+.severity-badge .icon {
+  width: 13px;
+  height: 13px;
+  stroke-width: 2.5;
 }
 .severity-critical {
   --badge: var(--bad);
