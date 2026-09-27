@@ -1,9 +1,25 @@
 // DOM helpers, formatting, notices, and labels shared by the portal modules.
-import { notify } from "./common.js";
+import {
+  exit,
+  motion,
+  notify,
+  reducedMotion,
+  reflow,
+  settled,
+} from "./common.js";
 import { config } from "./api.js";
 import { icon, setIconLabel } from "./icons.js";
 
-export { icon, notify, setIconLabel };
+export {
+  exit,
+  icon,
+  motion,
+  notify,
+  reducedMotion,
+  reflow,
+  setIconLabel,
+  settled,
+};
 
 export const $ = (id) => document.getElementById(id);
 

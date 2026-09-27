@@ -6,6 +6,7 @@ import {
   ACTIVE,
   TERMINAL,
   action,
+  exit,
   icon,
   iconAction,
   node,
@@ -14,6 +15,8 @@ import {
   profileIds,
   profileLabel,
   quantity,
+  reducedMotion,
+  reflow,
   setIconLabel,
   showError,
   size,
@@ -30,6 +33,10 @@ const ACTIVE_POLL = 2500,
   // this often to discover external deletions, expirations, and uploads.
   RECONCILE_INTERVAL = 30000;
 const pollDelayFor = (activeCount) => (activeCount ? ACTIVE_POLL : IDLE_POLL);
+// How long a deleted file can be restored before the deletion is sent.
+const UNDO_WINDOW = 6000;
+// How long a stat takes to count up to its new value.
+const COUNT_DURATION = 600;
 
 let documents = [],
   stats = { total: 0, activity: [], passed_by_profile: {} },
@@ -47,7 +54,13 @@ let documents = [],
   pollTimer,
   searchTimer;
 const expanded = new Set(),
-  detailRows = new Map();
+  detailRows = new Map(),
+  // Deletions still inside their undo window, by document ID, each with the
+  // function that sends it; their rows are hidden meanwhile.
+  pendingDeletes = new Map(),
+  sendingDeletes = new Set(),
+  // Each rendered document's status, to spot the ones that just finished.
+  renderedStatuses = new Map();
 
 export function beginBatch() {
   progressDocumentIds = new Set();
@@ -81,12 +94,41 @@ function renderProfileStats() {
     );
 }
 
+// Files in the workspace, less the ones whose deletion awaits its undo window.
+const visibleTotal = () => Math.max(0, stats.total - pendingDeletes.size);
+
+// Counts `element` up (or down) to `value`; its card pulses when it grows.
+function showCount(element, value = 0) {
+  const from = Number(element.dataset.value ?? 0);
+  element.dataset.value = value;
+  cancelAnimationFrame(element.countFrame);
+  if (from === value || reducedMotion()) {
+    element.textContent = value;
+    return;
+  }
+  if (value > from && from) {
+    const card = element.closest(".stat-card");
+    card.classList.remove("is-bumped");
+    void card.offsetWidth; // Restarts the pulse if it is still running.
+    card.classList.add("is-bumped");
+  }
+  const start = performance.now();
+  const step = (now) => {
+    const t = Math.min(1, (now - start) / COUNT_DURATION);
+    element.textContent = Math.round(
+      from + (value - from) * (1 - (1 - t) ** 3),
+    );
+    if (t < 1) element.countFrame = requestAnimationFrame(step);
+  };
+  element.countFrame = requestAnimationFrame(step);
+}
+
 function renderStats() {
-  $("count").textContent = stats.total;
-  $("stat-processed").textContent = stats.processed;
+  $("count").textContent = visibleTotal();
+  showCount($("stat-processed"), stats.processed);
   for (const stat of document.querySelectorAll("[data-passed-profile]"))
-    stat.textContent = stats.passed_by_profile[stat.dataset.passedProfile] ?? 0;
-  $("stat-pages").textContent = stats.pages;
+    showCount(stat, stats.passed_by_profile[stat.dataset.passedProfile]);
+  showCount($("stat-pages"), stats.pages);
   // Deleted or expired submissions count as finished so progress never stalls.
   const active = new Set(stats.activity.map((item) => item.id)),
     total = progressDocumentIds.size,
@@ -215,7 +257,7 @@ function renderActions(d, openMenus) {
   }
   options.append(
     menuAction("View validation details", () => toggleDetail(d, true)),
-    menuAction("Delete file", () => confirmDelete(d), "danger"),
+    menuAction("Delete file", () => deleteWithUndo(d), "danger"),
   );
   menu.append(summary, options);
   const split = node("div", undefined, "split-button");
@@ -232,6 +274,10 @@ function renderRow(d, openMenus) {
     `document-row${ACTIVE.includes(d.status) ? " is-processing" : ""}${d.status === "running" ? " is-running" : ""}`,
   );
   tr.id = `row-${d.id}`;
+  // A result that arrived since the last render flashes in its outcome's color.
+  const before = renderedStatuses.get(d.id);
+  if (ACTIVE.includes(before) && TERMINAL.includes(d.status))
+    tr.classList.add("just-finished", `just-${d.status}`);
   tr.addEventListener("click", (event) => {
     if (
       event.target.closest("a, button, input, select, summary, [role='button']")
@@ -257,15 +303,17 @@ function renderRow(d, openMenus) {
 function renderResults() {
   renderStats();
   // The server has already applied search, filter, and documentLimit.
-  $("empty").hidden = !!documents.length;
-  $("results").hidden = !documents.length;
-  $("empty").querySelector("h3").textContent = stats.total
+  const shown = documents.filter((doc) => !pendingDeletes.has(doc.id));
+  $("empty").hidden = !!shown.length;
+  $("results").hidden = !shown.length;
+  $("delete-all").hidden = !visibleTotal();
+  $("empty").querySelector("h3").textContent = visibleTotal()
     ? "No matching files"
     : "No files yet";
-  const signature = JSON.stringify(documents);
+  const signature = JSON.stringify(shown);
   if (signature === renderedSignature) return;
   renderedSignature = signature;
-  const visible = new Set(documents.map((doc) => doc.id));
+  const visible = new Set(shown.map((doc) => doc.id));
   for (const [id, row] of detailRows) {
     if (visible.has(id)) continue;
     cancelDetail(row);
@@ -277,9 +325,12 @@ function renderResults() {
       (menu) => menu.id,
     ),
   );
-  $("results-body").replaceChildren(
-    ...documents.flatMap((d) => renderRow(d, openMenus)),
+  const body = $("results-body");
+  reflow([...body.querySelectorAll(".document-row")], () =>
+    body.replaceChildren(...shown.flatMap((d) => renderRow(d, openMenus))),
   );
+  renderedStatuses.clear();
+  for (const d of shown) renderedStatuses.set(d.id, d.status);
   if (focused?.isConnected) focused.focus({ preventScroll: true });
   else if (focused?.id)
     document.getElementById(focused.id)?.focus({ preventScroll: true });
@@ -357,7 +408,6 @@ export async function refresh({ append = false, activityOnly = false } = {}) {
       lastFullRefresh = Date.now();
     }
     $("load-more").hidden = !nextCursor;
-    $("delete-all").hidden = !stats.total;
     renderResults();
     pollDelay = pollDelayFor(stats.activity.length);
   } catch (error) {
@@ -445,21 +495,55 @@ function confirmRemoval({ title, message, keep, remove, onConfirm }) {
   };
 }
 
-function confirmDelete(doc) {
-  confirmRemoval({
-    title: `Delete “${doc.name}”?`,
-    message:
-      "Access is removed immediately. The document and its reports will be permanently removed.",
-    keep: "Keep file",
-    remove: "Delete file",
-    onConfirm: async () => {
-      await api(`/documents/${doc.id}`, { method: "DELETE" });
-      expanded.delete(doc.id);
-      cancelDetail(detailRows.get(doc.id));
-      detailRows.delete(doc.id);
-      notify("File deleted.");
-    },
+// Hides the file at once and offers an undo; the deletion is sent when the
+// notice goes, or sooner if the page is closed.
+async function deleteWithUndo(doc) {
+  const row = document.getElementById(`row-${doc.id}`);
+  // Focus moves on before its row goes, to the next file or else the search.
+  const rows = [...document.querySelectorAll(".document-row")];
+  const next = rows[rows.indexOf(row) + 1] || rows[rows.indexOf(row) - 1];
+  (next?.querySelector(".expand-toggle") || $("search")).focus({
+    preventScroll: true,
   });
+  let undone = false;
+  const send = (keepalive = false) => commitDelete(doc.id, keepalive);
+  pendingDeletes.set(doc.id, send);
+  expanded.delete(doc.id);
+  cancelDetail(detailRows.get(doc.id));
+  await Promise.all(
+    [row, detailRows.get(doc.id)].filter(Boolean).map((el) => exit(el)),
+  );
+  renderResults();
+  notify(`Deleted “${doc.name}”.`, false, {
+    duration: UNDO_WINDOW,
+    action: { label: "Undo", handler: () => (undone = true) },
+    onDismiss: () => (undone ? restore(doc) : send()),
+  });
+}
+
+function restore(doc) {
+  // Delete all may already have removed it.
+  if (!pendingDeletes.delete(doc.id)) return;
+  renderResults();
+  document.getElementById(`toggle-${doc.id}`)?.focus({ preventScroll: true });
+  notify(`Restored “${doc.name}”.`);
+}
+
+// Sends a pending deletion once; the row stays hidden until the refresh after
+// it, so the file count never flickers back up.
+async function commitDelete(id, keepalive) {
+  if (!pendingDeletes.has(id) || sendingDeletes.has(id)) return;
+  sendingDeletes.add(id);
+  try {
+    await api(`/documents/${id}`, { method: "DELETE", keepalive });
+  } catch (error) {
+    // Already gone, perhaps expired; anything else brings the row back.
+    if (error.status !== 404) showError(error);
+  } finally {
+    sendingDeletes.delete(id);
+    pendingDeletes.delete(id);
+  }
+  if (!keepalive) await refresh().catch(showError);
 }
 
 function confirmDeleteAll() {
@@ -470,6 +554,7 @@ function confirmDeleteAll() {
     remove: "Delete all documents",
     onConfirm: async () => {
       const { deleted } = await api("/documents", { method: "DELETE" });
+      pendingDeletes.clear();
       expanded.clear();
       for (const row of detailRows.values()) cancelDetail(row);
       detailRows.clear();
@@ -514,4 +599,8 @@ export function initResults() {
       });
   });
   window.addEventListener("online", poll);
+  // Deletions still awaiting their undo window are sent before the page goes.
+  window.addEventListener("pagehide", () => {
+    for (const send of pendingDeletes.values()) send(true);
+  });
 }

@@ -68,11 +68,13 @@
           </div>
         </div>
       </header>
+      <!-- Notices stack here, newest first; errors are announced as alerts. -->
       <div
         id="notice"
-        role="status"
+        role="log"
         aria-live="polite"
-        class="notice"
+        aria-label="Notifications"
+        class="notices"
         hidden
       ></div>
       <section id="workspace" class="card" aria-labelledby="upload-heading">

@@ -166,6 +166,6 @@
 }
 @media (prefers-reduced-motion: no-preference) {
   main {
-    transition: filter 0.2s ease-out;
+    transition: filter var(--dur-base) var(--ease-out);
   }
 }

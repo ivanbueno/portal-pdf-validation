@@ -102,9 +102,26 @@ test("real multi-file uploads, reports, keyboard dialog, and deletion", async ({
     "",
   );
   await fail.locator(".action-dropdown > summary").press("Enter");
-  await fail.getByRole("button", { name: "Delete file", exact: true }).click();
-  await page.locator("#confirm-delete").click();
-  await expect(page.locator("#confirm")).not.toBeVisible();
+  // Deleting hides the file at once and offers an undo before anything is sent.
+  const row = page.locator(`#${await fail.getAttribute("id")}`);
+  await row.getByRole("button", { name: "Delete file", exact: true }).click();
+  await expect(row).toHaveCount(0);
+  const notices = page.locator("#notice");
+  await notices.getByRole("button", { name: "Undo" }).click();
+  await expect(row).toBeVisible();
+  await expect(notices).toContainText("Restored “ua-fail.pdf”.");
+  await row.locator(".action-dropdown > summary").click();
+  await row.getByRole("button", { name: "Delete file", exact: true }).click();
+  const deleted = page.waitForRequest(
+    (request) =>
+      request.method() === "DELETE" && request.url().includes("/documents/"),
+  );
+  await notices
+    .locator(".notice-item", { hasText: "Deleted “ua-fail.pdf”." })
+    .getByRole("button", { name: "Dismiss notification" })
+    .click();
+  await deleted;
+  await expect(row).toHaveCount(0);
   expect(errors).toEqual([]);
 });
 
@@ -616,6 +633,10 @@ test("delete all documents asks for confirmation first", async ({ page }) => {
   await expect(dialog.locator("h2")).toHaveText("Delete all documents?");
   await expect(dialog).toContainText("permanently removes 3 files");
   await expect(page.locator("#confirm-cancel")).toBeFocused();
+  // Contrast is measured once the dialog has finished fading in.
+  await dialog.evaluate((el) =>
+    Promise.all(el.getAnimations().map((a) => a.finished)),
+  );
   const a11y = await new AxeBuilder({ page })
     .include("#confirm")
     .withTags(["wcag2a", "wcag2aa", "wcag21aa"])

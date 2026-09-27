@@ -27,6 +27,15 @@
   /* The brand blue is the same in both themes, unlike --accent. */
   --brand: #245dab;
   --brand-strong: #194b8e;
+  /* Motion: things arrive on --ease-out and leave on --ease-in; --dur-fast
+     for small controls, --dur-base for panels and rows, --dur-slow for
+     attention cues. Looping indicators keep their own rhythm. */
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in: cubic-bezier(0.55, 0, 1, 0.45);
+  --dur-fast: 150ms;
+  --dur-base: 220ms;
+  --dur-slow: 1200ms;
+  --dur-spin: 0.8s;
   /* A faint grid behind header surfaces; use with an 8px background-size. */
   --brand-grid:
     linear-gradient(
@@ -233,8 +242,8 @@ header {
   border-color: transparent;
   background: transparent;
   transition:
-    color 120ms ease,
-    background-color 120ms ease;
+    color var(--dur-fast) var(--ease-out),
+    background-color var(--dur-fast) var(--ease-out);
 }
 #account-settings-toggle:hover {
   color: var(--accent);
@@ -256,6 +265,33 @@ header {
 }
 .account-menu[hidden] {
   display: none;
+}
+/* The menu grows out of its settings button and shrinks back into it. */
+@media (prefers-reduced-motion: no-preference) {
+  .account-menu {
+    transform-origin: top right;
+    transition:
+      opacity var(--dur-fast) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out),
+      display var(--dur-fast) allow-discrete;
+  }
+  .account-menu[hidden] {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.96);
+    transition-timing-function: var(--ease-in);
+  }
+  @starting-style {
+    .account-menu:not([hidden]) {
+      opacity: 0;
+      transform: translateY(-4px) scale(0.96);
+    }
+  }
+  #account-settings-toggle .icon {
+    transition: transform var(--dur-base) var(--ease-out);
+  }
+  #account-settings-toggle[aria-expanded="true"] .icon {
+    transform: rotate(45deg);
+  }
 }
 .theme-options {
   display: flex;
@@ -339,6 +375,8 @@ h3 {
   font-size: 1.05rem;
   font-weight: 700;
   line-height: 1.2;
+  /* Even digits, so a counting number does not jostle its label. */
+  font-variant-numeric: tabular-nums;
 }
 .stat-card > div > span {
   color: var(--muted);
@@ -450,7 +488,7 @@ h3 {
   margin-left: auto;
   color: var(--muted);
   font-size: 1.4rem;
-  transition: transform 0.2s ease;
+  transition: transform var(--dur-base) var(--ease-out);
 }
 .run-options[open] > summary::after {
   transform: rotate(90deg);
@@ -459,8 +497,8 @@ h3 {
   block-size: 0;
   overflow: clip;
   transition:
-    block-size 0.24s ease,
-    content-visibility 0.24s allow-discrete;
+    block-size var(--dur-base) var(--ease-out),
+    content-visibility var(--dur-base) allow-discrete;
 }
 .run-options[open]::details-content {
   block-size: auto;
@@ -507,18 +545,19 @@ h3 {
   padding-top: 22px;
   flex-wrap: wrap;
 }
+/* Always a centered flex row, so the spinner and label swap in place and the
+   width upload.js pins while submitting keeps the label centered. */
 .primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
   background: var(--brand);
   color: #fff;
   border-color: var(--brand);
   padding: 12px 20px;
   font-size: 0.9375rem;
   font-weight: 650;
-}
-.primary.is-submitting {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
 }
 .primary.is-submitting::before {
   content: "";
@@ -528,7 +567,7 @@ h3 {
   border: 2px solid currentColor;
   border-right-color: transparent;
   border-radius: 50%;
-  animation: portal-spin 0.8s linear infinite;
+  animation: portal-spin var(--dur-spin) linear infinite;
 }
 @keyframes portal-spin {
   to {
@@ -540,7 +579,7 @@ h3 {
   color: white;
 }
 .primary span {
-  margin-left: 22px;
+  margin-left: 12px;
 }
 .muted {
   color: var(--muted);
@@ -591,7 +630,7 @@ h3 {
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
-  animation: portal-spin 0.8s linear infinite;
+  animation: portal-spin var(--dur-spin) linear infinite;
 }
 .activity {
   margin-top: 38px;
@@ -767,13 +806,26 @@ a {
 footer a {
   white-space: nowrap;
 }
-.notice {
+/* The notice stack: newest on top, each a separate bubble. */
+.notices {
   position: fixed;
   z-index: 1000;
   top: 20px;
   right: 20px;
   width: min(420px, calc(100vw - 40px));
-  padding: 14px 20px;
+  display: grid;
+  gap: 10px;
+  pointer-events: none;
+}
+.notices[hidden] {
+  display: none;
+}
+.notice-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 6px 6px 20px;
+  pointer-events: auto;
   /* A chat bubble: fully rounded except the corner nearest the screen edge. */
   border-radius: 20px 6px 20px 20px;
   /* Liquid glass: a barely-there tint over a lightly blurred, saturated
@@ -797,21 +849,53 @@ footer a {
     0 10px 30px rgb(0 0 0 / 14%);
   text-shadow: 0 1px 2px light-dark(rgb(255 255 255 / 70%), rgb(0 0 0 / 50%));
   font-size: 0.875rem;
-  opacity: 1;
-  transform: translateY(0);
-  transition:
-    opacity 250ms ease,
-    transform 250ms ease;
+  animation: notice-enter var(--dur-base) var(--ease-out) both;
 }
-.notice[hidden] {
-  display: none;
-}
-.notice.notice-leaving {
-  opacity: 0;
-  transform: translateY(-8px);
-}
-.notice.error {
+.notice-item.error {
   --glass-tint: color-mix(in srgb, var(--bad) 14%, transparent);
+}
+.notice-item.is-leaving {
+  animation: notice-exit var(--dur-base) var(--ease-in) both;
+}
+.notice-item p {
+  flex: 1;
+  margin: 8px 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.notice-item button {
+  flex: none;
+  min-height: 34px;
+  border-color: transparent;
+  background: transparent;
+  text-shadow: none;
+}
+.notice-item button:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, currentColor 10%, transparent);
+}
+.notice-action {
+  padding: 6px 12px;
+  color: var(--accent);
+  font-weight: 700;
+}
+.notice-close {
+  min-width: 34px;
+  padding: 6px;
+  border-radius: 999px;
+  color: var(--muted);
+}
+@keyframes notice-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+@keyframes notice-exit {
+  to {
+    opacity: 0;
+    transform: translateX(16px);
+  }
 }
 progress {
   width: 100%;
@@ -888,6 +972,45 @@ dialog {
 dialog::backdrop {
   background: #06152d88;
   backdrop-filter: blur(3px);
+}
+/* Dialogs rise into place over a fading backdrop and sink away on close;
+   display and overlay transition discretely so the exit can play. */
+@media (prefers-reduced-motion: no-preference) {
+  dialog {
+    opacity: 0;
+    transform: translateY(10px) scale(0.98);
+    transition:
+      opacity var(--dur-base) var(--ease-in),
+      transform var(--dur-base) var(--ease-in),
+      overlay var(--dur-base) allow-discrete,
+      display var(--dur-base) allow-discrete;
+  }
+  dialog[open] {
+    opacity: 1;
+    transform: none;
+    transition-timing-function: var(--ease-out);
+  }
+  @starting-style {
+    dialog[open] {
+      opacity: 0;
+      transform: translateY(10px) scale(0.98);
+    }
+  }
+  dialog::backdrop {
+    opacity: 0;
+    transition:
+      opacity var(--dur-base) var(--ease-out),
+      overlay var(--dur-base) allow-discrete,
+      display var(--dur-base) allow-discrete;
+  }
+  dialog[open]::backdrop {
+    opacity: 1;
+  }
+  @starting-style {
+    dialog[open]::backdrop {
+      opacity: 0;
+    }
+  }
 }
 #confirm {
   max-width: 450px;
@@ -1017,13 +1140,15 @@ dialog::backdrop {
 }
 @media (prefers-reduced-motion: no-preference) {
   button {
-    transition: border-color 0.15s;
+    transition:
+      border-color var(--dur-fast) var(--ease-out),
+      background-color var(--dur-fast) var(--ease-out);
   }
   .expand-toggle .icon {
-    transition: transform 0.15s ease-out;
+    transition: transform var(--dur-fast) var(--ease-out);
   }
   #progress-row:not([hidden]) {
-    animation: progress-enter 0.24s ease-out both;
+    animation: progress-enter var(--dur-base) var(--ease-out) both;
   }
   @keyframes progress-enter {
     from {
@@ -1035,6 +1160,66 @@ dialog::backdrop {
       transform: translateY(0);
     }
   }
+}
+/* Rows slide in when added and fade aside when removed; scripts wait for
+   the exit before taking the row out, then slide the rest into place. */
+@media (prefers-reduced-motion: no-preference) {
+  tr.is-entering > td {
+    animation: row-enter var(--dur-base) var(--ease-out) both;
+  }
+  tr.is-leaving > td {
+    animation: row-exit var(--dur-base) var(--ease-in) both;
+  }
+  @keyframes row-enter {
+    from {
+      opacity: 0;
+      transform: translateY(-6px);
+    }
+  }
+  @keyframes row-exit {
+    to {
+      opacity: 0;
+      transform: translateX(16px);
+    }
+  }
+  /* A result that just arrived washes its row in the outcome's color. */
+  #results .document-row.just-finished > td {
+    animation: row-finished var(--dur-slow) var(--ease-out);
+  }
+  .document-row.just-finished .profile-state {
+    animation: outcome-pop var(--dur-base) var(--ease-out) both;
+  }
+  @keyframes row-finished {
+    from {
+      background-color: color-mix(in srgb, var(--flash) 16%, transparent);
+    }
+  }
+  @keyframes outcome-pop {
+    from {
+      opacity: 0;
+      transform: scale(0.85);
+    }
+  }
+  /* A stat card that grew nudges up once. */
+  .stat-card.is-bumped strong {
+    display: inline-block;
+    animation: stat-bump var(--dur-slow) var(--ease-out);
+  }
+  @keyframes stat-bump {
+    15% {
+      color: var(--accent);
+      transform: translateY(-2px) scale(1.08);
+    }
+  }
+}
+.document-row.just-passed {
+  --flash: var(--good);
+}
+.document-row.just-failed {
+  --flash: var(--bad);
+}
+.document-row.just-error {
+  --flash: var(--warn);
 }
 .theme-switching *,
 .theme-switching *::before,
@@ -1149,9 +1334,9 @@ dialog::backdrop {
   font-weight: 650;
   white-space: nowrap;
   transition:
-    color 0.2s ease,
-    background-color 0.2s ease,
-    border-color 0.2s ease;
+    color var(--dur-base) var(--ease-out),
+    background-color var(--dur-base) var(--ease-out),
+    border-color var(--dur-base) var(--ease-out);
 }
 .profile-line.running::after {
   position: absolute;
@@ -1253,7 +1438,7 @@ dialog::backdrop {
   border-radius: 50%;
   content: "";
   vertical-align: -1px;
-  animation: profile-count-spin 0.8s linear infinite;
+  animation: profile-count-spin var(--dur-spin) linear infinite;
 }
 @keyframes profile-count-spin {
   to {
@@ -1352,10 +1537,10 @@ dialog::backdrop {
   }
 }
 .detail-row.detail-enter .expanded-report {
-  animation: detail-enter 0.2s ease-out both;
+  animation: detail-enter var(--dur-base) var(--ease-out) both;
 }
 .detail-row.detail-closing .expanded-report {
-  animation: detail-exit 0.16s ease-in both;
+  animation: detail-exit var(--dur-fast) var(--ease-in) both;
 }
 .validation-summary {
   align-self: start;

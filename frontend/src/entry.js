@@ -28,6 +28,22 @@ document.addEventListener("click", (event) => {
   )
     closeSettings();
 });
+// Tabbing out of the menu closes it, as clicking elsewhere does.
+settingsMenu.parentElement.addEventListener("focusout", (event) => {
+  if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget))
+    closeSettings();
+});
+// Arrow keys move between the menu's buttons, wrapping at either end.
+settingsMenu.addEventListener("keydown", (event) => {
+  const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[
+    event.key
+  ];
+  if (!step) return;
+  event.preventDefault();
+  const items = [...settingsMenu.querySelectorAll("button:not([hidden])")];
+  const index = items.indexOf(document.activeElement);
+  items.at((index + step) % items.length).focus();
+});
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !settingsMenu.hidden) {
     closeSettings();
