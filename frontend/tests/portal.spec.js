@@ -574,6 +574,9 @@ test("delete all documents asks for confirmation first", async ({ page }) => {
         passed_by_profile: { "wcag-2.2": 0, "pdfua-1": 0 },
         pages: 0,
         active_ids: [],
+        activity: [],
+        // Older pages exist until everything is deleted.
+        next_cursor: total ? "older" : null,
       },
     }),
   );

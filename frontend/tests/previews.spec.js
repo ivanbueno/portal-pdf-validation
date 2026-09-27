@@ -68,7 +68,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 for (const lateOutcome of ["resolve", "reject"]) {
-  test(`dialog ignores an old ${lateOutcome} after reopening`, async ({
+  test(`dialog ignores an old ${lateOutcome} after reopening @source`, async ({
     page,
   }) => {
     // Deliberately ignores cancellation, so the dialog must also fence responses.
@@ -258,7 +258,9 @@ test("object locations load structure parsing on demand", async ({ page }) => {
   expect(libraries.some((url) => url.includes("pdf-structure"))).toBe(true);
 });
 
-test("preview caches enforce count and byte limits", async ({ page }) => {
+test("preview caches enforce count and byte limits @source", async ({
+  page,
+}) => {
   await page.route("**/api/v1/documents/a/pdf", (route) =>
     route.fulfill({
       contentType: "application/pdf",

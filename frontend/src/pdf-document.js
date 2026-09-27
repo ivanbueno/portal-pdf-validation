@@ -40,13 +40,8 @@ export const withDocument = documentSessions((docId) => {
       controller.abort();
       await task?.destroy();
       if (source) {
-        for (const key of [
-          "markedContent",
-          "annotations",
-          "regions",
-          "previews",
-        ])
-          source[key].clear();
+        for (const value of Object.values(source))
+          if (value instanceof Map) value.clear();
         source.data = null;
         source.structure = null;
       }
@@ -83,6 +78,30 @@ async function scanMarkedContent(pdf, pageNumber) {
   return byMcid;
 }
 
+// Bounded caches are Maps in least-recently-used order: reinserting a key
+// moves it last, so eviction starts from the first.
+export function touch(cache, key, value = cache.get(key)) {
+  cache.delete(key);
+  cache.set(key, value);
+  return value;
+}
+
+// Evicts the least recently used entries until at most `count` remain and the
+// values `weigh` sizes total at most `weight`.
+export function evictOldest(
+  cache,
+  { count = Infinity, weight = Infinity, weigh = () => 0 },
+) {
+  let total = 0;
+  if (weight !== Infinity)
+    for (const value of cache.values()) total += weigh(value);
+  for (const [key, value] of cache) {
+    if (cache.size <= count && total <= weight) break;
+    cache.delete(key);
+    total -= weigh(value);
+  }
+}
+
 // The promise `compute()` returns, cached under `key`; a failure is evicted so it can retry.
 export function cached(cache, key, compute, limit = 32) {
   if (!cache.has(key)) {
@@ -92,10 +111,8 @@ export function cached(cache, key, compute, limit = 32) {
     });
     cache.set(key, result);
   }
-  const result = cache.get(key);
-  cache.delete(key);
-  cache.set(key, result);
-  while (cache.size > limit) cache.delete(cache.keys().next().value);
+  const result = touch(cache, key);
+  evictOldest(cache, { count: limit });
   return result;
 }
 

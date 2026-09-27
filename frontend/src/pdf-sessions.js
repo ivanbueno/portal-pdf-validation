@@ -44,8 +44,11 @@ export function documentSessions(open, limit = 2) {
       entry = sessions.get(key);
       if (!entry) {
         while (!entry && sessions.size >= limit) {
-          const [oldKey, old] = [...sessions].find(([, item]) => !item.users);
-          await discard(oldKey, old);
+          const idle = [...sessions].find(([, item]) => !item.users);
+          // Unreachable while the operation and session limits match; if they
+          // ever diverge, briefly exceed the session limit rather than throw.
+          if (!idle) break;
+          await discard(...idle);
           signal.throwIfAborted();
           // Another operation may have loaded this document during disposal.
           entry = sessions.get(key);

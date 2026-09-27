@@ -51,10 +51,15 @@ def read_slice(store, prefix, name, total, size, offset, limit):
     return items
 
 
+def read_index(store, doc):
+    """The paged report's index and the prefix its pages are stored under."""
+    name = doc["report_index"]
+    return json.loads(store.read(name)), name.rsplit("/", 1)[0] + "/"
+
+
 def read_results(store, doc, offset, limit):
     if doc.get("report_index"):
-        index = json.loads(store.read(doc["report_index"]))
-        prefix = doc["report_index"].rsplit("/", 1)[0] + "/"
+        index, prefix = read_index(store, doc)
         results = [
             result
             | {
@@ -84,8 +89,7 @@ def read_results(store, doc, offset, limit):
 
 def read_groups(store, doc, offset, limit):
     if doc.get("report_index"):
-        index = json.loads(store.read(doc["report_index"]))
-        prefix = doc["report_index"].rsplit("/", 1)[0] + "/"
+        index, prefix = read_index(store, doc)
         total = index["group_total"]
         items = read_slice(store, prefix, "groups", total, index["group_chunk"], offset, limit)
     else:

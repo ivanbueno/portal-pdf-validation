@@ -6,7 +6,7 @@ import heapq
 import json
 import math
 from ..config import PROCESSING, PROFILES, TERMINAL, Status
-from ..domain import LISTED, is_live, matches, profile_summaries, public
+from ..domain import iter_live, matches, profile_summaries, public
 
 ACTIVITY_FIELDS = ["id", "status", "attempts", "expires"]
 
@@ -16,14 +16,10 @@ def activity_item(row):
 
 
 def document_activity(store, owner, now):
-    rows = store.rows(
-        owner,
-        where="( status eq 'queued' or status eq 'running' ) and expires gt @now",
-        parameters={"now": now},
-        select=ACTIVITY_FIELDS,
-    )
+    processing = " or ".join(f"status eq '{status}'" for status in PROCESSING)
+    rows = iter_live(store, owner, now, where=processing, select=ACTIVITY_FIELDS)
     return sorted(
-        (activity_item(row) for row in rows if row["status"] in PROCESSING and is_live(row, now)),
+        (activity_item(row) for row in rows if row["status"] in PROCESSING),
         key=lambda row: row["id"],
     )
 
@@ -53,15 +49,7 @@ def document_page(store, owner, now, offset, limit, query, status, cursor=None):
     activity = []
 
     def candidates():
-        rows = store.rows(
-            owner,
-            where=f"status ne '{Status.DELETED}' and expires gt @now",
-            parameters={"now": now},
-            select=LISTED,
-        )
-        for row in rows:
-            if not is_live(row, now):
-                continue
+        for row in iter_live(store, owner, now):
             totals["total"] += 1
             totals["processed"] += row["status"] in TERMINAL
             totals["pages"] += row.get("page_count") or 0

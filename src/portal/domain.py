@@ -61,18 +61,25 @@ def is_live(row, now=None):
 LISTED = sorted(PUBLIC | {"requested_profiles", "profile_summaries", "snapshot"})
 
 
-def live_documents(store, owner, now, select=LISTED):
-    """The owner's live documents: filtered by Table Storage, then re-checked here.
+def iter_live(store, owner, now, where=None, select=LISTED):
+    """Stream the owner's live documents: filtered by Table Storage, then re-checked here.
 
+    `where` narrows the service-side filter further; callers still check what it selects.
     Rows read with the default `select` are partial and cannot be saved; pass None for full rows.
     """
+    live = f"status ne '{Status.DELETED}' and expires gt @now"
     rows = store.rows(
         owner,
-        where=f"status ne '{Status.DELETED}' and expires gt @now",
+        where=f"{live} and ( {where} )" if where else live,
         parameters={"now": now},
         select=select,
     )
-    return [row for row in rows if is_live(row, now)]
+    return (row for row in rows if is_live(row, now))
+
+
+def live_documents(store, owner, now, select=LISTED):
+    """The owner's live documents, read in full before the caller changes any of them."""
+    return list(iter_live(store, owner, now, select=select))
 
 
 def matches(row, query, status):

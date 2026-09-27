@@ -1,14 +1,23 @@
 // Page previews for veraPDF issue occurrences: locate the failing region, then
 // render its page with the region boxed.
 import {
-  withDocument,
+  evictOldest,
   markedContentRects,
   pageAnnotations,
+  touch,
+  withDocument,
 } from "./pdf-document.js";
 import { toViewportRect, unionRects, validRect } from "./pdf-geometry.js";
 import { contentItem, explicitBounds, objectNumbers } from "./pdf-locations.js";
 
 const HIGHLIGHT = "#df2020";
+const REGION_LIMIT = 100;
+// Rendered images are data URLs; bound them by count and approximate UTF-16 size.
+const PREVIEW_LIMITS = {
+  count: 24,
+  weight: 16 * 1024 * 1024,
+  weigh: (image) => image.src.length * 2,
+};
 
 async function structureBounds(source, occurrence) {
   if (!objectNumbers(occurrence.location).length) return null;
@@ -145,12 +154,7 @@ export async function renderOccurrencePreview(
 ) {
   return withDocument(docId, signal, async (source) => {
     const key = `${occurrenceKey(occurrence)}:${width}`;
-    const existing = source.previews.get(key);
-    if (existing) {
-      source.previews.delete(key);
-      source.previews.set(key, existing);
-      return existing;
-    }
+    if (source.previews.has(key)) return touch(source.previews, key);
     // Located once per occurrence: the thumbnail and enlarged renders share it.
     // Location work belongs to this operation; don't share its cancellation with
     // another consumer. Cache only completed locations.
@@ -159,10 +163,8 @@ export async function renderOccurrencePreview(
       source.regions.get(locationKey) ||
       (await locate(source, occurrence, signal));
     signal.throwIfAborted();
-    source.regions.delete(locationKey);
-    source.regions.set(locationKey, { page, rects });
-    while (source.regions.size > 100)
-      source.regions.delete(source.regions.keys().next().value);
+    touch(source.regions, locationKey, { page, rects });
+    evictOldest(source.regions, { count: REGION_LIMIT });
     if (!page || page < 1 || page > source.pdf.numPages)
       throw new Error("No page could be matched to this veraPDF location");
     const canvas = await renderPage(source.pdf, page, rects, width, signal);
@@ -173,17 +175,8 @@ export async function renderOccurrencePreview(
         precise: rects.some(validRect),
       };
       signal.throwIfAborted();
-      source.previews.set(key, image);
-      // Bound retained strings by both count and approximate UTF-16 storage size.
-      let bytes = [...source.previews.values()].reduce(
-        (sum, value) => sum + value.src.length * 2,
-        0,
-      );
-      while (source.previews.size > 24 || bytes > 16 * 1024 * 1024) {
-        const oldest = source.previews.keys().next().value;
-        bytes -= source.previews.get(oldest).src.length * 2;
-        source.previews.delete(oldest);
-      }
+      touch(source.previews, key, image);
+      evictOldest(source.previews, PREVIEW_LIMITS);
       return image;
     } finally {
       canvas.width = canvas.height = 0;

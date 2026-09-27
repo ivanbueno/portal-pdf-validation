@@ -2,7 +2,7 @@
 
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
-from ..config import ACTIVE, DEFAULT_PROFILES, MAX_FILE, PROFILES, PROFILE_ALIASES, TERMINAL
+from ..config import ACTIVE, DEFAULT_PROFILES, MAX_FILE, PROCESSING, PROFILES, PROFILE_ALIASES, TERMINAL
 from .report import Issue, Severity, ValidationSummary
 
 
@@ -79,7 +79,7 @@ class DocumentView(BaseModel):
 
 class DocumentActivity(BaseModel):
     id: str
-    status: _literal(("queued", "running"))
+    status: _literal(PROCESSING)
     attempts: int
     expires: float
 
