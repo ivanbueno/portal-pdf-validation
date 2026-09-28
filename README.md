@@ -30,7 +30,7 @@ Up to 200 files (2 GiB) per upload from the browser, 200 MiB per file. By defaul
 <details>
 <summary><b>Can other systems use it?</b></summary>
 
-Yes. The portal itself uses the same versioned API that approved integrations call. See the [API guide](docs/api.md), the [Python client](scripts/validate.py), and [external client setup](docs/azure-api.md).
+Yes. The portal itself uses the same versioned API that approved integrations call. See the [API guide](docs/api.md), the [PHP SDK](sdk/php/README.md), the [Python client](scripts/validate.py), and [external client setup](docs/azure-api.md).
 </details>
 
 <details>
