@@ -1,0 +1,154 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1680" height="960" viewBox="0 0 1680 960" role="img" aria-labelledby="title desc">
+  <title id="title">PDF Validation Portal on Azure Container Apps</title>
+  <desc id="desc">An Azure resource group containing the pdfval-env Container Apps environment (pdfval-api, pdfval-worker and pdfval-maintenance), the pdfval-runtime managed identity, a Container Registry, a Storage account, the pdfval-logs Log Analytics workspace, and alerts with an action group.</desc>
+  <defs>
+    <linearGradient id="bg" x2="0" y2="1"><stop stop-color="#ffffff"/><stop offset="1" stop-color="#f6faff"/></linearGradient>
+    <linearGradient id="panel" x2="0" y2="1"><stop stop-color="#f1f9ff"/><stop offset="1" stop-color="#e2f2ff"/></linearGradient>
+    <linearGradient id="api" x2="0" y2="1"><stop stop-color="#0a84e0"/><stop offset="1" stop-color="#0868c4"/></linearGradient>
+    <linearGradient id="worker" x2="0" y2="1"><stop stop-color="#8249de"/><stop offset="1" stop-color="#6632c4"/></linearGradient>
+    <linearGradient id="maint" x2="0" y2="1"><stop stop-color="#0a939a"/><stop offset="1" stop-color="#087980"/></linearGradient>
+    <marker id="arrow" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#174b87"/></marker>
+    <marker id="arrowBlue" viewBox="0 0 12 12" markerWidth="12" markerHeight="12" refX="11" refY="6" orient="auto" markerUnits="userSpaceOnUse"><path d="M0 0 12 6 0 12Z" fill="#0a7fd6"/></marker>
+    <g id="containerApp" fill="none" stroke="#fff" stroke-width="4" stroke-linejoin="round">
+      <path d="M4 14 36 2l32 12v34L36 60 4 48Z"/>
+      <path d="M4 14l32 12 32-12M36 26v34M16 23v22M26 27v26M46 27v26M56 23v22"/>
+    </g>
+    <style>
+      text{font-family:"Segoe UI","Helvetica Neue",Arial,sans-serif;fill:#12366c}
+      .title{font-size:40px;font-weight:700;fill:#0f2f63}
+      .subtitle{font-size:21px;fill:#3a6592}
+      .head{font-size:22px;font-weight:700}
+      .body{font-size:17px;fill:#3a6592}
+      .cardTitle{font-size:22px;font-weight:700;fill:#fff}
+      .cardBody{font-size:17px;fill:#fff;fill-opacity:.92}
+      .cardMeta{font-size:17px;fill:#12366c}
+      .edge{fill:none;stroke:#174b87;stroke-width:2.2;marker-end:url(#arrow)}
+      .identity{fill:none;stroke:#0a7fd6;stroke-width:2.2;stroke-dasharray:7 6;marker-end:url(#arrowBlue)}
+      .label{font-size:15px;font-weight:600;paint-order:stroke;stroke:#f7fbff;stroke-width:6px;stroke-linejoin:round}
+      .box{fill:url(#panel);stroke:#1b8fe6;stroke-width:2}
+    </style>
+  </defs>
+
+  <rect width="1680" height="960" fill="url(#bg)"/>
+  <text class="title" x="34" y="56">PDF Validation Portal on Azure Container Apps</text>
+  <text class="subtitle" x="35" y="92">Scalable PDF validation with secure identity, storage, and monitoring on Azure Container Apps.</text>
+
+  <!-- Resource group -->
+  <rect x="20" y="114" width="1640" height="744" rx="18" fill="#f5faff" stroke="#1b8fe6" stroke-width="2.5"/>
+  <g transform="translate(56 134)" stroke="#1494e9" stroke-width="3" stroke-linejoin="round">
+    <path d="M34 2 64 18v34L34 68 4 52V18Z" fill="#dff2ff"/>
+    <path d="M4 18l30 16 30-16M34 34v34" fill="none"/>
+    <path d="M-2 14v42M70 14v42" fill="none" stroke-width="5" stroke-linecap="round"/>
+  </g>
+  <text class="head" x="145" y="160">Resource group</text>
+  <text class="body" x="145" y="187">Contains all resources for the PDF validation portal</text>
+
+  <!-- Container Apps environment -->
+  <rect x="282" y="210" width="1020" height="310" rx="16" fill="url(#panel)" stroke="#1b8fe6" stroke-width="2.5"/>
+  <g transform="translate(304 228)">
+    <path d="M12 14 44 4l24 10v34L44 60 12 50Z" fill="#7a55e0"/>
+    <path d="M22 18v30M32 16v36M42 14v40M54 16v36" stroke="#e9e2ff" stroke-width="4"/>
+    <path d="M4 44C-4 22 26 0 60 6M76 22c6 22-24 44-58 40" fill="none" stroke="#2a90ea" stroke-width="3.5" stroke-linecap="round"/>
+  </g>
+  <text class="head" x="410" y="255">pdfval-env · Container Apps environment</text>
+  <text class="body" x="410" y="282">Runs the API and background jobs for PDF validation</text>
+
+  <!-- Workloads -->
+  <rect x="303" y="306" width="318" height="193" rx="12" fill="url(#api)"/>
+  <rect x="634" y="306" width="316" height="193" rx="12" fill="url(#worker)"/>
+  <rect x="963" y="306" width="318" height="193" rx="12" fill="url(#maint)"/>
+  <use href="#containerApp" x="426" y="320"/>
+  <use href="#containerApp" x="756" y="320"/>
+  <use href="#containerApp" x="1086" y="320"/>
+  <text class="cardTitle" x="462" y="412" text-anchor="middle">pdfval-api</text>
+  <text class="cardBody" x="462" y="439" text-anchor="middle">Container App</text>
+  <text class="cardTitle" x="792" y="412" text-anchor="middle">pdfval-worker</text>
+  <text class="cardBody" x="792" y="439" text-anchor="middle">Event job · queue-triggered</text>
+  <text class="cardTitle" x="1122" y="412" text-anchor="middle">pdfval-maintenance</text>
+  <text class="cardBody" x="1122" y="439" text-anchor="middle">Scheduled job · every 2 min</text>
+  <rect x="317" y="455" width="290" height="34" rx="8" fill="#dff1ff"/>
+  <rect x="647" y="455" width="290" height="34" rx="8" fill="#ece4ff"/>
+  <rect x="977" y="455" width="290" height="34" rx="8" fill="#d8f4f3"/>
+  <text class="cardMeta" x="462" y="478" text-anchor="middle">0.5 vCPU · 1 GiB · 1–3 replicas</text>
+  <text class="cardMeta" x="792" y="478" text-anchor="middle">2 vCPU · 4 GiB · max 4</text>
+  <text class="cardMeta" x="1122" y="478" text-anchor="middle">0.5 vCPU · 1 GiB</text>
+
+  <!-- Identity assignments -->
+  <path class="identity" d="M462 520v35h260v38"/>
+  <path class="identity" d="M792 520v73"/>
+  <path class="identity" d="M1122 520v35H862v38"/>
+  <text class="label" x="488" y="545">run as</text>
+  <text class="label" x="804" y="545">run as</text>
+  <text class="label" x="1052" y="545">run as</text>
+
+  <!-- Managed identity -->
+  <rect class="box" x="553" y="594" width="460" height="92" rx="12"/>
+  <g transform="translate(668 604)">
+    <circle cx="26" cy="16" r="13" fill="#1087d5"/>
+    <path d="M2 70c0-24 10-38 24-38s24 14 24 38Z" fill="#1087d5"/>
+    <path d="M38 40 58 56 38 72 18 56Z" fill="#2fb8f5" stroke="#fff" stroke-width="2"/>
+  </g>
+  <text class="head" x="746" y="632">pdfval-runtime</text>
+  <text class="body" x="746" y="659">Managed identity</text>
+
+  <!-- Container Registry -->
+  <rect class="box" x="44" y="590" width="284" height="96" rx="12"/>
+  <g transform="translate(58 610)">
+    <path d="M12 38C0 38 0 22 12 20 14 6 30 2 38 12c8-6 22-2 22 10 10 1 10 16 0 16Z" fill="#1088d8"/>
+    <rect x="30" y="28" width="36" height="28" rx="2" fill="#fff" stroke="#1088d8" stroke-width="2.5"/>
+    <path d="M38 33v18M46 33v18M54 33v18M61 33v18" stroke="#1088d8" stroke-width="2.5"/>
+  </g>
+  <text class="head" x="142" y="632">Container Registry</text>
+  <text class="body" x="142" y="659">Basic</text>
+  <path class="edge" d="M553 640H330"/>
+  <text class="label" x="441" y="628" text-anchor="middle">AcrPull</text>
+
+  <!-- Storage -->
+  <path class="edge" d="M783 686v44"/>
+  <text class="label" x="800" y="714">Blob / Queue / Table data roles</text>
+  <rect class="box" x="484" y="731" width="602" height="98" rx="12"/>
+  <g transform="translate(536 752)" fill="#1188d8">
+    <ellipse cx="32" cy="10" rx="32" ry="10"/>
+    <path d="M0 10v42c0 6 14 11 32 11s32-5 32-11V10c0 6-14 11-32 11S0 16 0 10Z"/>
+    <path d="M0 31c0 6 14 11 32 11s32-5 32-11" fill="none" stroke="#fff" stroke-width="2.5"/>
+  </g>
+  <text class="head" x="628" y="774">Storage account · Standard LRS</text>
+  <text class="body" x="628" y="803">blob: documents · queue: validation · table: validation</text>
+
+  <!-- Log Analytics -->
+  <rect class="box" x="1364" y="553" width="263" height="111" rx="12"/>
+  <g fill="#1388d8">
+    <rect x="1380" y="608" width="13" height="28" rx="2"/>
+    <rect x="1399" y="592" width="13" height="44" rx="2"/>
+    <rect x="1418" y="574" width="13" height="62" rx="2"/>
+  </g>
+  <text class="head" x="1450" y="604">pdfval-logs</text>
+  <text class="body" x="1450" y="631">Log Analytics · 30 days</text>
+
+  <!-- Alerts -->
+  <rect class="box" x="1387" y="733" width="240" height="104" rx="12"/>
+  <g transform="translate(1408 754)">
+    <path d="M24 4c-11 0-18 8-18 19v14l-5 7h46l-5-7V23C42 12 35 4 24 4Z" fill="#1088d8"/>
+    <path d="M17 49a7 7 0 0 0 14 0Z" fill="#1088d8"/>
+    <path d="M-2 10l-6-5M50 10l6-5M-4 22h-7M52 22h7" stroke="#1088d8" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text class="head" x="1476" y="780">Alerts +</text>
+  <text class="head" x="1476" y="807">action group</text>
+
+  <!-- Monitoring edges -->
+  <path class="edge" d="M1302 343h195v209"/>
+  <path class="edge" d="M1497 664v68"/>
+  <path class="edge" d="M1302 385h40v362h44"/>
+  <path class="edge" d="M1302 433h18v352h66"/>
+  <path class="edge" d="M1086 818h300"/>
+  <text class="label" transform="translate(1347 640) rotate(-90)" text-anchor="middle">from worker</text>
+  <text class="label" transform="translate(1325 640) rotate(-90)" text-anchor="middle">from maintenance</text>
+  <text class="label" x="1203" y="810" text-anchor="middle">from storage</text>
+
+  <!-- Legend -->
+  <rect x="20" y="876" width="1640" height="62" rx="12" fill="#f3f9ff" stroke="#b3d7f4" stroke-width="1.5"/>
+  <path class="identity" d="M60 907h136"/>
+  <text class="body" x="214" y="913" fill="#12366c">= identity assignment / run as</text>
+  <path class="edge" d="M498 907h124"/>
+  <text class="body" x="640" y="913" fill="#12366c">= access or monitoring</text>
+</svg>

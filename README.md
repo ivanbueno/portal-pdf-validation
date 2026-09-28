@@ -13,19 +13,7 @@ Every issue is grouped by standard and clause, with the exact failed check:
 
 ![An expanded result: WCAG 2.2 passes, PDF/UA-1 fails with one issue, grouped by clause](docs/images/result-details.png)
 
-## What a result tells you
-
-```mermaid
-flowchart LR
-    U([PDF uploaded]) --> V{Checked against<br/>each standard}
-    V -->|Pass| P["✅ No automated issues<br/>→ continue to manual review"]
-    V -->|Fail| F["❌ Issues listed by clause<br/>→ fix the source, re-upload"]
-    V -->|Error| E["⚠️ Could not be processed<br/>(retried up to 3 times)<br/>→ check the file, try again"]
-```
-
-A processing error is never reported as a failing PDF, and each standard gets its own result.
-
-## Questions leaders ask
+## FAQ
 
 <details>
 <summary><b>Is our content safe?</b></summary>
