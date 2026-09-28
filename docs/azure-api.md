@@ -89,17 +89,44 @@ In production, load the secret directly from a vault or secret manager rather th
 
 Send the access token in the `Authorization` header. Do not send `X-MS-CLIENT-PRINCIPAL`; Easy Auth supplies the validated principal. Bearer-token API clients do not need the browser-only `X-Requested-With` header.
 
-Example: create a document reservation. See [api.md](api.md) for the full upload → submit → poll → download process and endpoint details.
+Example: create a document reservation, upload the PDF directly to its temporary Blob URL, and submit it. Set `PDF_PATH` to the local file. See [api.md](api.md) for the full upload → submit → poll → download process and endpoint details.
 
 ```sh
 BASE="https://YOUR_PORTAL_HOSTNAME"
-curl --fail-with-body "$BASE/api/v1/documents" \
+PDF_PATH="sample.pdf"
+RESERVATION=$(curl --fail-with-body --silent --show-error "$BASE/api/v1/documents" \
   --header "Authorization: Bearer $TOKEN" \
   --header 'Content-Type: application/json' \
-  --data '{"name":"sample.pdf","profiles":["wcag","pdfua1"]}'
+  --data '{"name":"sample.pdf","profiles":["wcag","pdfua1"]}')
+UPLOAD_URL=$(printf '%s' "$RESERVATION" | jq -r '.upload_url')
+DOCUMENT_ID=$(printf '%s' "$RESERVATION" | jq -r '.id')
+
+# Upload URL is a temporary credential. Do not include the Entra bearer token here.
+curl --fail-with-body --request PUT "$UPLOAD_URL" \
+  --header 'x-ms-blob-type: BlockBlob' \
+  --header 'Content-Type: application/pdf' \
+  --data-binary "@$PDF_PATH"
+
+# Submit the uploaded PDF through the API with the Entra bearer token.
+curl --fail-with-body --request POST "$BASE/api/v1/documents/$DOCUMENT_ID/submit" \
+  --header "Authorization: Bearer $TOKEN"
+
+# Check progress; repeat this request until status is passed, failed, or error.
+curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/status" \
+  --header "Authorization: Bearer $TOKEN" | jq '{id, status, profiles}'
+
+# After processing completes, download the complete normalized JSON report.
+curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/reports/json" \
+  --header "Authorization: Bearer $TOKEN" \
+  --output "${DOCUMENT_ID}-report.json"
+
+# Optional: download the original XML report for one validation profile.
+curl --fail-with-body "$BASE/api/v1/documents/$DOCUMENT_ID/reports/xml?profile=pdfua-1" \
+  --header "Authorization: Bearer $TOKEN" \
+  --output "${DOCUMENT_ID}-pdfua.xml"
 ```
 
-The API returns an upload URL for direct upload to private Blob Storage. Treat that URL as a temporary credential, upload the PDF to it without forwarding the Entra token, then submit the document using the bearer token. Documents and reports are scoped to the calling application's service principal; separate client applications have separate document ownership.
+The status endpoint returns the current state (`uploading`, `queued`, `running`, `passed`, `failed`, or `error`) and profile summaries. Poll with a delay/backoff while the state is `queued` or `running`; request reports after it reaches a terminal state (`passed`, `failed`, or `error`). Treat the upload URL as a temporary credential and do not log or share it. Documents and reports are scoped to the calling application's service principal; separate client applications have separate document ownership.
 
 ## 7. Check access and troubleshoot
 
