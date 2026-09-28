@@ -3,9 +3,8 @@ declare(strict_types=1);
 
 namespace PdfValidation;
 
-use Psr\Http\Client\ClientInterface;
-use Psr\Http\Message\RequestFactoryInterface;
-use Psr\Http\Message\StreamFactoryInterface;
+use GuzzleHttp\ClientInterface;
+use GuzzleHttp\Exception\GuzzleException;
 
 final class EntraClientCredentialsTokenProvider implements AccessTokenProvider
 {
@@ -14,8 +13,6 @@ final class EntraClientCredentialsTokenProvider implements AccessTokenProvider
 
     public function __construct(
         private readonly ClientInterface $httpClient,
-        private readonly RequestFactoryInterface $requestFactory,
-        private readonly StreamFactoryInterface $streamFactory,
         private readonly string $tenantId,
         private readonly string $clientId,
         private readonly string $clientSecret,
@@ -36,19 +33,17 @@ final class EntraClientCredentialsTokenProvider implements AccessTokenProvider
         }
 
         $url = 'https://login.microsoftonline.com/' . rawurlencode($this->tenantId) . '/oauth2/v2.0/token';
-        $body = http_build_query([
-            'client_id' => $this->clientId,
-            'client_secret' => $this->clientSecret,
-            'grant_type' => 'client_credentials',
-            'scope' => $this->scope,
-        ], '', '&', PHP_QUERY_RFC3986);
-        $request = $this->requestFactory->createRequest('POST', $url)
-            ->withHeader('Content-Type', 'application/x-www-form-urlencoded')
-            ->withBody($this->streamFactory->createStream($body));
-
         try {
-            $response = $this->httpClient->sendRequest($request);
-        } catch (\Throwable $error) {
+            $response = $this->httpClient->request('POST', $url, [
+                'form_params' => [
+                    'client_id' => $this->clientId,
+                    'client_secret' => $this->clientSecret,
+                    'grant_type' => 'client_credentials',
+                    'scope' => $this->scope,
+                ],
+                'http_errors' => false,
+            ]);
+        } catch (GuzzleException $error) {
             throw new TransportException('Unable to request an Entra access token.', 0, $error);
         }
 

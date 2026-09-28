@@ -3,49 +3,50 @@ declare(strict_types=1);
 
 namespace PdfValidation\Tests;
 
+use GuzzleHttp\Client as GuzzleClient;
+use GuzzleHttp\Handler\MockHandler;
+use GuzzleHttp\HandlerStack;
+use GuzzleHttp\Middleware;
+use GuzzleHttp\Psr7\Response;
+use GuzzleHttp\Psr7\Utils;
 use PdfValidation\AccessTokenProvider;
 use PdfValidation\ApiException;
 use PdfValidation\Client;
 use PHPUnit\Framework\TestCase;
-use Psr\Http\Client\ClientInterface;
-use Psr\Http\Message\RequestFactoryInterface;
-use Psr\Http\Message\RequestInterface;
-use Psr\Http\Message\ResponseInterface;
-use Psr\Http\Message\StreamFactoryInterface;
-use Psr\Http\Message\StreamInterface;
 
 final class ClientTest extends TestCase
 {
-    public function testCreateDocumentBuildsAuthenticatedJsonRequest(): void
+    public function testCreateDocumentSendsAuthenticatedJson(): void
     {
-        $body = $this->createMock(StreamInterface::class);
-        $body->method('__toString')->willReturn('{"name":"a.pdf"}');
-        $request = $this->createMock(RequestInterface::class);
-        $request->method('withHeader')->willReturnSelf();
-        $request->method('withBody')->with($body)->willReturnSelf();
-        $factory = $this->createMock(RequestFactoryInterface::class);
-        $factory->expects(self::once())->method('createRequest')->with('POST', 'https://portal.example/api/v1/documents')->willReturn($request);
-        $streams = $this->createMock(StreamFactoryInterface::class);
-        $streams->expects(self::once())->method('createStream')->willReturn($body);
-        $response = $this->response(201, '{"id":"doc-1"}');
-        $http = $this->createMock(ClientInterface::class);
-        $http->expects(self::once())->method('sendRequest')->with($request)->willReturn($response);
-        $tokens = new class implements AccessTokenProvider { public function getAccessToken(): string { return 'secret-token'; } };
+        [$http, $history] = $this->http([new Response(201, [], '{"id":"doc-1"}')]);
+        $client = new Client('https://portal.example', $http, $this->token());
 
-        $client = new Client('https://portal.example/', $http, $factory, $streams, $tokens);
-        self::assertSame(['id' => 'doc-1'], $client->createDocument('a.pdf'));
+        self::assertSame(['id' => 'doc-1'], $client->createDocument('a.pdf', 12, ['wcag'], 'key-1'));
+        $request = $history[0]['request'];
+        self::assertSame('POST', $request->getMethod());
+        self::assertSame('/api/v1/documents', $request->getUri()->getPath());
+        self::assertSame('Bearer test-token', $request->getHeaderLine('Authorization'));
+        self::assertSame('key-1', $request->getHeaderLine('Idempotency-Key'));
+        self::assertSame(['name' => 'a.pdf', 'size' => 12, 'profiles' => ['wcag']], json_decode((string) $request->getBody(), true));
+    }
+
+    public function testBlobUploadDoesNotForwardBearerToken(): void
+    {
+        [$http, $history] = $this->http([new Response(201)]);
+        $client = new Client('https://portal.example', $http, $this->token());
+
+        $client->uploadFile(Utils::streamFor('pdf'), 'https://blob.example/grant');
+        $request = $history[0]['request'];
+        self::assertSame('PUT', $request->getMethod());
+        self::assertSame('BlockBlob', $request->getHeaderLine('x-ms-blob-type'));
+        self::assertSame('application/pdf', $request->getHeaderLine('Content-Type'));
+        self::assertSame('', $request->getHeaderLine('Authorization'));
     }
 
     public function testApiExceptionPreservesDetailAndRequestId(): void
     {
-        $request = $this->createMock(RequestInterface::class);
-        $factory = $this->createMock(RequestFactoryInterface::class);
-        $factory->method('createRequest')->willReturn($request);
-        $response = $this->response(404, '{"detail":"Missing"}', 'req-123');
-        $http = $this->createMock(ClientInterface::class);
-        $http->method('sendRequest')->willReturn($response);
-        $tokens = new class implements AccessTokenProvider { public function getAccessToken(): string { return 'token'; } };
-        $client = new Client('https://portal.example', $http, $factory, $this->createMock(StreamFactoryInterface::class), $tokens);
+        [$http] = $this->http([new Response(404, ['X-Request-ID' => 'req-123'], '{"detail":"Missing"}')]);
+        $client = new Client('https://portal.example', $http, $this->token());
 
         try {
             $client->getStatus('gone');
@@ -57,38 +58,18 @@ final class ClientTest extends TestCase
         }
     }
 
-    public function testBlobUploadDoesNotForwardBearerToken(): void
+    private function http(array $responses): array
     {
-        $request = $this->createMock(RequestInterface::class);
-        $request->expects(self::once())->method('withBody')->willReturnSelf();
-        $seenHeaders = [];
-        $request->method('withHeader')->willReturnCallback(static function (string $name, string $value) use ($request, &$seenHeaders): RequestInterface {
-            self::assertNotSame('Authorization', $name);
-            $seenHeaders[$name] = $value;
-            return $request;
-        });
-        $factory = $this->createMock(RequestFactoryInterface::class);
-        $factory->expects(self::once())->method('createRequest')->with('PUT', 'https://blob.example/grant')->willReturn($request);
-        $streams = $this->createMock(StreamFactoryInterface::class);
-        $streams->expects(self::never())->method('createStream');
-        $http = $this->createMock(ClientInterface::class);
-        $http->expects(self::once())->method('sendRequest')->with($request)->willReturn($this->response(201, ''));
-        $tokens = new class implements AccessTokenProvider {
-            public function getAccessToken(): string { throw new \LogicException('Blob upload must not request an API token.'); }
-        };
-        $client = new Client('https://portal.example', $http, $factory, $streams, $tokens);
-        $client->uploadFile($this->createMock(StreamInterface::class), 'https://blob.example/grant');
-        self::assertSame(['x-ms-blob-type' => 'BlockBlob', 'Content-Type' => 'application/pdf'], $seenHeaders);
+        $history = [];
+        $stack = HandlerStack::create(new MockHandler($responses));
+        $stack->push(Middleware::history($history));
+        return [new GuzzleClient(['handler' => $stack]), &$history];
     }
 
-    private function response(int $status, string $content, string $requestId = ''): ResponseInterface
+    private function token(): AccessTokenProvider
     {
-        $body = $this->createMock(StreamInterface::class);
-        $body->method('__toString')->willReturn($content);
-        $response = $this->createMock(ResponseInterface::class);
-        $response->method('getStatusCode')->willReturn($status);
-        $response->method('getBody')->willReturn($body);
-        $response->method('getHeaderLine')->with('X-Request-ID')->willReturn($requestId);
-        return $response;
+        return new class implements AccessTokenProvider {
+            public function getAccessToken(): string { return 'test-token'; }
+        };
     }
 }

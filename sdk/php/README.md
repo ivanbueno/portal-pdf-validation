@@ -1,6 +1,6 @@
 # PDF Validation Portal PHP SDK
 
-Composer package for the versioned PDF Validation Portal API. Requires PHP 8.1+ and PSR-18, PSR-17, and PSR-7 implementations. Drupal applications can pass their configured HTTP client and PSR factories; standalone applications commonly use Guzzle with `guzzlehttp/guzzle` and `http-interop/http-factory-guzzle`.
+Composer package for the versioned PDF Validation Portal API. Requires PHP 8.1+ and Guzzle 7. Drupal already uses Guzzle, so its configured client can be injected directly.
 
 ## Install
 
@@ -20,9 +20,10 @@ The API expects an Entra access token for the portal API. You can supply a token
 ```php
 use PdfValidation\Client;
 use PdfValidation\StaticAccessTokenProvider;
+use GuzzleHttp\Client as GuzzleClient;
 
-$client = new Client($portalUrl, $httpClient, $requestFactory, $streamFactory,
-    new StaticAccessTokenProvider($accessToken));
+$http = new GuzzleClient();
+$client = new Client($portalUrl, $http, new StaticAccessTokenProvider($accessToken));
 ```
 
 Or let the SDK request and cache a token using the client-credentials flow. Set the scope to `api://<PORTAL_API_CLIENT_ID>/.default`. Load the secret from your secret manager or Drupal configuration; do not commit it or log it.
@@ -30,13 +31,15 @@ Or let the SDK request and cache a token using the client-credentials flow. Set 
 ```php
 use PdfValidation\Client;
 use PdfValidation\EntraClientCredentialsTokenProvider;
+use GuzzleHttp\Client as GuzzleClient;
 
+$http = new GuzzleClient();
 $tokens = new EntraClientCredentialsTokenProvider(
-    $httpClient, $requestFactory, $streamFactory,
+    $http,
     $tenantId, $clientId, $clientSecret,
     'api://' . $portalApiClientId . '/.default',
 );
-$client = new Client($portalUrl, $httpClient, $requestFactory, $streamFactory, $tokens);
+$client = new Client($portalUrl, $http, $tokens);
 ```
 
 `$portalUrl` is the portal origin, such as `https://portal.example`; `/api/v1` is added automatically. The client also accepts a URL already ending in `/api/v1`.
@@ -64,11 +67,11 @@ if (in_array($status['status'], ['passed', 'failed', 'error'], true)) {
 }
 ```
 
-For streamed uploads, pass a PSR-7 `StreamInterface` to `uploadAndSubmit()` or `uploadFile()`. Lower-level methods are available as well: `createDocument()`, `uploadFile()`, `renewUploadUrl()`, and `submit()`.
+For streamed uploads, pass a Guzzle/PSR-7 stream to `uploadAndSubmit()` or `uploadFile()`. Lower-level methods are available as well: `createDocument()`, `uploadFile()`, `renewUploadUrl()`, and `submit()`.
 
 ## Drupal integration
 
-Inject Drupal's PSR-18 HTTP client and PSR-17 request/stream factories into `Client` and the token provider from a service definition. If your Drupal version exposes a Guzzle client but not PSR factories, add a PSR-17 Guzzle factory package and adapt/inject the client through its PSR-18 interface. Keep tenant, client ID, API client ID, and portal URL in configuration; keep the client secret in the site's secret-management mechanism.
+Inject Drupal's configured Guzzle client from a service definition into `Client` and the token provider. Keep tenant, client ID, API client ID, and portal URL in configuration; keep the client secret in the site's secret-management mechanism.
 
 ## Security and errors
 
