@@ -42,5 +42,3 @@ An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure C
 | Developer | [Development and testing](docs/development.md), [API guide](docs/api.md) |
 | Integration Developer | [API guide](docs/api.md), [Azure API client setup](docs/azure-api.md), [PHP SDK](sdk/php/README.md) |
 | Identity Administrator | [Entra and deployment setup](docs/azure-ci.md), [API client permissions](docs/azure-api.md) |
-
-Engineers can try it locally with `docker compose up --build -d`, then open http://127.0.0.1:8000.
