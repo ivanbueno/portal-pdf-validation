@@ -25,12 +25,6 @@ The totals at the top show files processed, how many passed each standard, and p
 
 Page counts come from [veraPDF page feature extraction](https://docs.verapdf.org/cli/feature-extraction/), within the same time and output limits as validation. Older reports without page data show “Page count unavailable.”
 
-## On a phone
-
-The portal works on small screens and in dark mode.
-
-<img src="images/mobile-dark.png" alt="The portal on a phone in dark mode" width="300">
-
 ## Limits and retention
 
 | Limit | Value |

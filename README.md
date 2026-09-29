@@ -5,14 +5,6 @@
 > [!WARNING]
 > **A pass is not a sign-off.** Automated checks do not establish full accessibility or WCAG conformance. Manual review is required. This service does not remediate documents.
 
-## See it
-
-![The portal workspace: upload area, workspace totals and the list of checked files](docs/images/dropzone.png)
-
-Every issue is grouped by standard and clause, with the exact failed check:
-
-![An expanded result: WCAG 2.2 passes, PDF/UA-1 fails with one issue, grouped by clause](docs/images/result-details.png)
-
 ## FAQ
 
 <details>
@@ -39,14 +31,16 @@ Yes. The portal itself uses the same versioned API that approved integrations ca
 An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure Container Apps, Storage and monitoring, then deploys. Creating this project provisions nothing by itself. [Azure resources →](docs/how-it-works.md#azure-resources) · [Deploy to Azure →](docs/azure-ci.md)
 </details>
 
-<details>
-<summary><b>How do we know it works?</b></summary>
-
-The [verification record](docs/verification.md) lists every test run, including automated accessibility checks of the portal, and what hasn't been run in Azure yet.
-</details>
-
 ## Go deeper
 
-**[Using the portal](docs/user-guide.md)** · **[How it works](docs/how-it-works.md)** · **[Development and testing](docs/development.md)** · **[API guide](docs/api.md)** · **[Deploy to Azure](docs/azure-ci.md)** ([manual](docs/azure-manual.md)) · **[Verification](docs/verification.md)** · [Attribution](licenses/NOTICE.md)
+| Role | Documentation |
+|---|---|
+| Staff | [Using the portal](docs/user-guide.md) |
+| Architect | [How it works](docs/how-it-works.md) |
+| Tech Support | [Tier 1 support runbook](docs/runbook-tier-1.md) |
+| DevOps | [Tier 2 runbook and onboarding](docs/runbook-tier-2.md), [Deploy to Azure](docs/azure-ci.md), [Manual setup guide](docs/azure-manual.md) |
+| Developer | [Development and testing](docs/development.md), [API guide](docs/api.md) |
+| Integration Developer | [API guide](docs/api.md), [Azure API client setup](docs/azure-api.md), [PHP SDK](sdk/php/README.md) |
+| Identity Administrator | [Entra and deployment setup](docs/azure-ci.md), [API client permissions](docs/azure-api.md) |
 
 Engineers can try it locally with `docker compose up --build -d`, then open http://127.0.0.1:8000.

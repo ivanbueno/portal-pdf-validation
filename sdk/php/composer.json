@@ -1,5 +1,5 @@
 {
-  "name": "pdf-validation-portal/sdk",
+  "name": "judicialcouncil/pdf-validation",
   "description": "PHP client for the PDF Validation Portal API",
   "type": "library",
   "license": "MIT",

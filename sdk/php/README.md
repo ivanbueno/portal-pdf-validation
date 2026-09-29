@@ -2,17 +2,6 @@
 
 Composer package for the versioned PDF Validation Portal API. Requires PHP 8.1+ and Guzzle 7. Drupal already uses Guzzle, so its configured client can be injected directly.
 
-## Install
-
-Install the package in a consuming project with a path repository or publish it to your Composer registry. The package requirements are declared in `sdk/php/composer.json`.
-
-```json
-{
-  "repositories": [{ "type": "path", "url": "../portal-pdf-validation/sdk/php" }],
-  "require": { "pdf-validation-portal/sdk": "*" }
-}
-```
-
 ## Configure authentication
 
 The API expects an Entra access token for the portal API. You can supply a token managed by your application:
