@@ -39,6 +39,7 @@ An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure C
 | Architect | [How it works](docs/how-it-works.md) |
 | Tech Support | [Tier 1 support runbook](docs/runbook-tier-1.md) |
 | DevOps | [Tier 2 runbook and onboarding](docs/runbook-tier-2.md), [Deploy to Azure](docs/azure-ci.md), [Manual setup guide](docs/azure-manual.md) |
-| Developer | [Development and testing](docs/development.md), [API guide](docs/api.md) |
+| Developer | [Onboarding and knowledge transfer](docs/development-onboarding.md), [Development and testing](docs/development.md), [API guide](docs/api.md) |
 | Integration Developer | [API guide](docs/api.md), [Azure API client setup](docs/azure-api.md), [PHP SDK](sdk/php/README.md) |
 | Identity Administrator | [Entra and deployment setup](docs/azure-ci.md), [API client permissions](docs/azure-api.md) |
+| Security Reviewer | [Open security findings and TODOs](docs/security-todo.md), [How it works](docs/how-it-works.md) |
