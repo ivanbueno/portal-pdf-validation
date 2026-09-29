@@ -145,4 +145,4 @@ The Entra app registration, resource group and GitHub OIDC identity are created 
 | `pdfval-queue-backlog` | Metric alert, severity 2: more than **1,000 queued messages** (hourly average) |
 | `pdfval-worker-failed`, `pdfval-maintenance-failed` | Metric alerts, severity 2: any failed job execution in a 5-minute window, including platform termination |
 
-See the [deployment guide](azure-ci.md) for provisioning and the [verification record](verification.md) for what has been tested.
+See the [deployment guide](azure-ci.md) for provisioning.

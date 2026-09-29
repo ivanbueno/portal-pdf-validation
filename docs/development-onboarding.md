@@ -490,4 +490,3 @@ Do not record tokens, customer PDFs or sensitive screen content in handover reco
 | User workflows | [User guide](user-guide.md) |
 | Incident diagnosis and release operations | [Tier 1 runbook](runbook-tier-1.md), [Tier 2 runbook](runbook-tier-2.md) |
 | Azure deployment | [Deployment workflow guide](azure-ci.md), [Manual setup guide](azure-manual.md) |
-| Historical test evidence | [Verification record](verification.md); compare with the current Verify workflow. |

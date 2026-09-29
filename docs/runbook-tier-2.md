@@ -44,7 +44,7 @@ This document describes procedures; it does not authorize production changes. Co
 | What limits apply? | [Configuration](../src/portal/config.py), [validation runner](../src/portal/services/runner.py) |
 | How is the image built? | [Dockerfile](../Dockerfile), [dependency lock](../requirements.lock), [veraPDF installer](../scripts/install-verapdf.sh) |
 
-Treat [verification.md](verification.md) as a dated test record. It includes older behavior and tests that had not yet run in Azure. Use the current code, current workflow results and fresh smoke tests to establish current behavior.
+Use the current code, current workflow results and fresh smoke tests to establish current behavior.
 
 ## 2. Architecture and Failure Boundaries
 

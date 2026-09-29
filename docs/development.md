@@ -45,7 +45,7 @@ npx playwright install chromium
 npm test
 ```
 
-The real-engine tests skip when `PDF_VERAPDF_JAR` is unavailable. The emulator test requires running Azurite and a real engine. CI runs the application tests inside the production Python 3.12/Java container, plus emulator and browser acceptance tests. See the [verification record](verification.md) for what was actually run in this workspace.
+The real-engine tests skip when `PDF_VERAPDF_JAR` is unavailable. The emulator test requires running Azurite and a real engine. CI runs the application tests inside the production Python 3.12/Java container, plus emulator and browser acceptance tests.
 
 ## Deploy
 
