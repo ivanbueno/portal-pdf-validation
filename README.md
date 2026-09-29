@@ -5,6 +5,8 @@
 > [!WARNING]
 > **A pass is not a sign-off.** Automated checks do not establish full accessibility or WCAG conformance. Manual review is required. This service does not remediate documents.
 
+**For leadership:** [Executive explainer and stakeholder pitch](executive-summary.md) — the investment case built on our team's experience processing **400,000 PDFs / 8 million pages**, a comparison with paid services, the case for Azure managed infrastructure over a VM, and a proposed pilot to establish value. These figures describe the team's processing history, not this portal's validation results.
+
 ## FAQ
 
 <details>
@@ -35,6 +37,7 @@ An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure C
 
 | Role | Documentation |
 |---|---|
+| Executives and budget owners | [Executive explainer, pilot proposal, and stakeholder pitch](executive-summary.md) |
 | Staff | [Using the portal](docs/user-guide.md) |
 | Architect | [How it works](docs/how-it-works.md) |
 | Tech Support | [Tier 1 support runbook](docs/runbook-tier-1.md) |
