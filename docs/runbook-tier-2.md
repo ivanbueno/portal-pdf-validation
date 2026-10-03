@@ -114,7 +114,7 @@ These are repository defaults, not measurements or approved performance targets.
 
 ## 3. Access, Identities and Configuration Ownership
 
-### Keep the three identities distinct
+### Keep deployment, runtime, worker and portal identities distinct
 
 | Identity | Purpose | Where to inspect it |
 |---|---|---|
@@ -127,7 +127,7 @@ The deployment trust expects issuer `https://token.actions.githubusercontent.com
 
 The foundation gives the runtime identity Storage Blob Data Contributor, Storage Blob Delegator, Storage Queue Data Contributor and Storage Table Data Contributor at storage-account scope, plus AcrPull at registry scope. Inspect effective assignments at `Azure Portal > Storage accounts > [confirmed account] > Access control (IAM) > Role assignments` and `Azure Portal > Container registries > [confirmed registry] > Access control (IAM) > Role assignments`.
 
-The worker must never inherit those broad runtime roles. See [worker isolation](worker-isolation.md) for its custom role conditions, private endpoints, migration and negative access checks.
+The worker must never inherit those broad runtime roles. See [worker isolation](worker-isolation.md) for its custom role conditions, private endpoints and negative access checks.
 
 An Azure management role does not automatically prove data access. Successful use of the engineer's account does not prove the runtime identity has access. See [Microsoft's managed identity guide](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity).
 

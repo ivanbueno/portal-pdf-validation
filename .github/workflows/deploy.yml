@@ -26,17 +26,6 @@ jobs:
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
       - name: Compile infrastructure
         run: az bicep build --file infra/main.bicep --outfile /tmp/main.json
-      - name: Check worker environment migration
-        run: |
-          set -euo pipefail
-          GROUP_ID=$(az group show --name "$RESOURCE_GROUP" --query id --output tsv)
-          EXPECTED_ENV="$GROUP_ID/providers/Microsoft.App/managedEnvironments/$PREFIX-worker-env"
-          CURRENT_ENV=$(az containerapp job list --resource-group "$RESOURCE_GROUP" \
-            --query "[?name=='$PREFIX-worker'].properties.environmentId | [0]" --output tsv)
-          if [ -n "$CURRENT_ENV" ] && [ "${CURRENT_ENV,,}" != "${EXPECTED_ENV,,}" ]; then
-            echo "::error::The existing worker must be replaced to change its environment. Follow docs/worker-isolation.md#existing-deployments, then rerun this workflow."
-            exit 1
-          fi
       - name: Provision foundation
         run: |
           ORIGIN=$(az containerapp show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null || true)

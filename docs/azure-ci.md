@@ -127,7 +127,7 @@ Create a Microsoft Entra service principal dedicated to deployments. Configure a
 
 Replace `<OWNER>` and `<REPOSITORY>` with the exact GitHub repository path. The subject must match because the workflow declares `environment: production`.
 
-Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment assigns the runtime identity access to storage and registry resources. A typical setup grants **Contributor** and **User Access Administrator** scoped to this resource group. The worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone cannot create these definitions. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
+Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment grants the runtime and worker identities their respective storage permissions and AcrPull access. A typical setup grants **Contributor** and **User Access Administrator** scoped to this resource group. The worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone cannot create these definitions. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
 
 Record the deployment service principal's **Application (client) ID**. It will be the `AZURE_DEPLOY_CLIENT_ID` value, distinct from the portal/API app registration ID.
 
@@ -203,7 +203,7 @@ Add the Easy Auth client secret **Value** from step 3 as an environment secret n
 
 The app is externally reachable over HTTPS. Easy Auth returns 401 for unauthenticated protected API routes; the public shell and health/configuration endpoints contain no document data. Never expose the Python container port through another ingress or proxy. Uploaded PDFs and reports expire after 72 hours. Log Analytics retention is 30 days. Storage versioning, soft delete, and backups are not enabled by these templates.
 
-Existing installations must follow the [worker isolation migration and verification guide](worker-isolation.md) before the application deployment. This release adds Premium ACR and four private endpoints, which increase infrastructure cost.
+The first deployment includes the separate worker identity and private environment. See [worker isolation](worker-isolation.md) for permissions, network boundaries and post-deployment checks. Include Premium ACR and four private endpoints in the deployment budget.
 
 ## Verify the deployment
 

@@ -6,7 +6,7 @@ Azure Container Apps Easy Auth handles staff sign-in, session cookies, and acces
 
 **Completion criteria:** both deployments succeed, the resource checks match this runbook, readiness returns HTTP 200, protected endpoints reject anonymous requests, an assigned staff member can upload and validate a PDF, maintenance runs successfully, and operations receives a test alert if email notification is configured.
 
-For an existing deployment, first follow the [worker environment migration guide](worker-isolation.md#existing-deployments). Premium ACR and four private endpoints add cost.
+The first deployment includes the separate worker identity and private environment. See [worker isolation](worker-isolation.md) for permissions, network boundaries and post-deployment checks. Include Premium ACR and four private endpoints in the deployment budget.
 
 ## 1. Collect the deployment details and confirm access
 
@@ -596,7 +596,7 @@ Attach this checklist to the deployment ticket:
 - [ ] Subscription/tenant, resource group, region, prefix, portal registration client ID, and resource names recorded.
 - [ ] Approved Git commit, image tag/digest, ACR build ID, and successful deployment names (`foundation`, `portal`) recorded.
 - [ ] Portal URL and exact Web callback recorded; Blob CORS matches.
-- [ ] Runtime identity assignments and Easy Auth configuration verified.
+- [ ] Runtime and worker identity assignments, worker network isolation, and Easy Auth configuration verified.
 - [ ] Assigned/unassigned sign-in, anonymous rejection, upload, reports, ownership, and deletion checks recorded.
 - [ ] Worker and maintenance execution results recorded; alert test delivered or email omission documented.
 - [ ] Secret vault reference, expiry, owner, and rotation due date recorded; no secret value included.
@@ -634,14 +634,14 @@ Easy Auth must remain the sole public authentication boundary. Do not expose por
 | Policy denial, quota, or region capacity failure | Record the policy/quota/resource error and escalate to the Azure administrator. Do not switch subscriptions/regions or relax policy independently. |
 | Registry/storage name conflict | Check whether the approved prefix/group were already used. Escalate before changing names; a different prefix creates a different resource set. |
 | ACR build fails | Read the failing build step. Confirm clean checkout and approved source. Dependency download/build errors go to the release owner; do not deploy a missing image tag. |
-| Image pull failure / revision not ready | Confirm the image exists, registry identity is `<prefix>-runtime`, and that identity has AcrPull. Check the app's system logs; retry after role propagation if appropriate. Do not enable registry admin credentials. |
+| Image pull failure / revision not ready | Confirm the image exists and the registry identity has AcrPull: `<prefix>-runtime` for API/maintenance, `<prefix>-worker` for the worker. For worker pulls, also check ACR private endpoint approval and private DNS. Check the app/job system logs; retry after role propagation if appropriate. Do not enable registry admin credentials. |
 | `/health/ready` returns 503 | Verify storage names, all four runtime data roles, identity client ID, and storage connectivity. Check app logs. Do not introduce account keys as a workaround. |
 | `AADSTS50011` / redirect mismatch | Compare the exact hostname and `/.auth/login/aad/callback` path with the registration's Web redirect URI. Save the corrected URI and retry a private session. |
 | Sign-in reports `id_token` response type is not enabled | Check the ID tokens setting in section 6.1 and save it. |
 | `invalid_client` or secret-related sign-in failure | Confirm the supplied credential is the portal registration's secret Value, is unexpired, and matches the client ID. Redeploy section 5 with a valid secret. |
 | Assigned user sees access needed / 403 | Verify the enterprise app's Application ID, enabled `Validation.User` role, and actual user/group assignment. Sign out and start a fresh session after changes. Ask the identity administrator about consent or Conditional Access failures. |
 | Upload fails with CORS error | Compare the browser's origin with Blob-service CORS. Redeploy foundation with the exact `$ORIGIN`. A later main deployment without `portalOrigin` can restore the placeholder. |
-| Upload succeeds but document stays queued | Inspect worker execution history, queue scaler account/queue/identity, registry pulls, and runtime queue permissions. Escalate persistent failures with document ID and timestamps. |
+| Upload succeeds but document stays queued | Inspect worker execution history, queue scaler account/queue/identity, registry pulls, and the worker identity's scoped queue permissions and private endpoint connectivity. Escalate persistent failures with document ID and timestamps. |
 | No alert email | Confirm `ALERT_EMAIL` was nonempty, action group receiver is correct, and its test succeeds. Delivery success is separate from triggering the alert. |
 | Storage portal cannot browse data | Operator management permissions are separate from storage data permissions. Use runtime readiness or request approved data access; do not enable shared keys. |
 

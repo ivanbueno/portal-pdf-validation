@@ -17,34 +17,23 @@ The Bicep templates reduce the permissions and network access available after a 
 
 The Blob custom role contains only `blobs/read` and `blobs/write`; its ABAC condition explicitly denies `Blob.List` and requires the snapshot request attribute. A positive read/write allowlist avoids exempting unintended actions. `StringLike` wildcards match across slashes, so the report namespace and JSON/XML suffixes matter; wildcard segment counts alone are not a security boundary. See Microsoft's [ABAC attributes](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-auth-abac-attributes) and [Blob condition examples](https://learn.microsoft.com/en-us/azure/storage/blobs/storage-auth-abac-examples).
 
-New reports use `<owner>/<document>/reports/<run>/`. Existing report URLs remain readable by the API through stored paths. A worker that loses its claim leaves its unpublished outputs for maintenance to remove on document deletion/expiry; it no longer needs Blob list/delete rights.
+Reports use `<owner>/<document>/reports/<run>/`. A worker that loses its claim leaves its unpublished outputs for maintenance to remove on document deletion/expiry; it does not need Blob list/delete rights.
 
 ## Network
 
-`infra/worker-network.bicep` creates an internal workload-profiles environment (`<prefix>-worker-env`, Consumption profile) in a dedicated VNet. The worker subnet has explicit inbound and outbound deny rules ahead of Azure's default allow rules. Blob, Queue, Table and ACR have private endpoints with linked private DNS zones. Premium ACR is required for its registry and image-layer private endpoints. Public storage upload/API access and ACR build access continue to use the existing public service endpoints outside this VNet.
+`infra/worker-network.bicep` creates an internal workload-profiles environment (`<prefix>-worker-env`, Consumption profile) in a dedicated VNet. The worker subnet has explicit inbound and outbound deny rules ahead of Azure's default allow rules. Blob, Queue, Table and ACR have private endpoints with linked private DNS zones. Premium ACR is required for its registry and image-layer private endpoints. Public storage upload/API access and ACR build access use public service endpoints outside this VNet.
 
 Outbound exceptions are HTTPS to the private-endpoint subnet, intra-worker-subnet traffic, Azure DNS on port 53, and HTTPS to these Azure platform service tags: `MicrosoftContainerRegistry`, `AzureFrontDoor.FirstParty`, `AzureActiveDirectory`, `AzureMonitor`. There is no broad `Internet`, `Storage`, `AzureContainerRegistry` or `AzureCloud` allow rule. This follows the [Container Apps NSG requirements](https://learn.microsoft.com/en-us/azure/container-apps/firewall-integration) and [ACR Private Link requirements](https://learn.microsoft.com/en-us/azure/container-registry/container-registry-private-endpoints).
 
 This blocks general internet connections, but it is not an air gap: the required platform destinations and DNS remain potential exfiltration channels. Container Apps' local [managed-identity endpoint](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity) also remains reachable inside the job. VNet rules do not isolate Java from that endpoint or from the Python coordinator. Do not peer this VNet with other networks or place unrelated workloads in its subnets.
 
-## Existing deployments
+## First deployment
 
-The Job model used by Bicep marks `environmentId` create-only in the [Azure Jobs API specification](https://github.com/Azure/azure-rest-api-specs/blob/main/specification/app/resource-manager/Microsoft.App/ContainerApps/stable/2025-01-01/Jobs.json). Its separate PATCH model permits updates, but cross-environment PATCH migration has not been verified here; this rollout uses job replacement. Plan a validation interruption for the first upgrade; the API and queued documents can remain available. The deployment workflow checks for the old environment before provisioning and stops with a migration message; it does not silently delete a running job.
+Follow the [CI deployment guide](azure-ci.md) or [manual provisioning runbook](azure-manual.md) to provision a fresh installation. The templates create separate runtime and worker identities, the worker's scoped grants, and its private environment from the outset. Include Premium ACR and four private endpoints in the deployment budget.
 
-1. Compile the templates and run the tests. Ensure `Microsoft.Network` is registered. The deployment principal needs `Microsoft.Authorization/roleDefinitions/write` as well as role-assignment permissions in the resource group. Contributor plus User Access Administrator provides these permissions; Contributor plus Role Based Access Control Administrator alone cannot create custom roles. Use narrower deployment permissions where available. See [Azure custom-role permissions](https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles#who-can-create-delete-update-or-view-a-custom-role).
-2. Budget for Premium ACR and four private endpoints. The foundation deployment upgrades ACR, creates the worker identity, grants and private environment. New deployments need no replacement step.
-3. For an existing installation, remove only the old `<prefix>-worker` job before the application deployment, using the normal release/change process. Deleting the job terminates its remaining executions. Their queue visibility timeout and document lease allow the new worker/maintenance to retry; validation may be delayed by one lease interval. Do not remove the queue, table, storage, API, maintenance job or runtime identity.
+Compile the templates and run the tests. Ensure `Microsoft.Network` is registered. The deployment principal needs `Microsoft.Authorization/roleDefinitions/write` as well as role-assignment permissions in the resource group. Contributor plus User Access Administrator provides these permissions; Contributor plus Role Based Access Control Administrator alone cannot create custom roles. Use narrower deployment permissions where available. See [Azure custom-role permissions](https://learn.microsoft.com/en-us/azure/role-based-access-control/custom-roles#who-can-create-delete-update-or-view-a-custom-role).
 
-   ```sh
-   # Set RESOURCE_GROUP and PREFIX to the reviewed deployment target first.
-   az containerapp job show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-worker" \
-     --query '{name:name,environment:properties.environmentId}' --output table
-   # One-time replacement only when the job still uses <prefix>-env:
-   az containerapp job delete --resource-group "$RESOURCE_GROUP" --name "$PREFIX-worker" --yes
-   ```
-
-4. Run the normal application deployment (the Deploy Azure workflow for CI-managed installations). It creates the same worker job name in `<prefix>-worker-env` with only `<prefix>-worker` attached. For a manual deployment, use `infra/main.bicep` as usual. Allow time for RBAC propagation before investigating an initial authorization failure.
-5. Verify the checks below. Audit inherited role assignments: a broad grant added outside these templates bypasses ABAC because Azure permissions are additive. Confirm there are no old worker executions or alternative worker jobs running with `<prefix>-runtime`. Do not roll back only the worker code to a release that writes outside `/reports/`; those writes are intentionally denied.
+After deployment, allow time for RBAC propagation before investigating an initial authorization failure, then complete the checks below. Audit inherited role assignments: a broad grant added outside these templates bypasses ABAC because Azure permissions are additive.
 
 ## Deployment verification
 
