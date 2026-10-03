@@ -1,11 +1,14 @@
 // The worker receives only the storage operations used by its queue/claim/report loop.
 // Conditions are defense in depth; a shared worker identity is not per-document isolation.
-param prefix string
+param namePrefix string
 param storageName string
-param registryName string
+param adminResourceGroupName string
+
+var names = loadJsonContent('./names.json')
 
 resource workerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
-  name: '${prefix}-worker'
+  scope: resourceGroup(adminResourceGroupName)
+  name: '${namePrefix}-${names.workerIdentity}'
 }
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
   name: storageName
@@ -34,14 +37,10 @@ resource validationTable 'Microsoft.Storage/storageAccounts/tableServices/tables
   parent: tableService
   name: 'validation'
 }
-resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
-  name: registryName
-}
-
 resource blobRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
-  name: guid(resourceGroup().id, prefix, 'worker-blobs')
+  name: guid(resourceGroup().id, namePrefix, 'worker-blobs')
   properties: {
-    roleName: '${prefix}-worker-blobs-${uniqueString(resourceGroup().id)}'
+    roleName: '${namePrefix}-${names.workerBlobRole}'
     description: 'Read submitted PDF snapshots and write validation reports; constrained by assignment conditions.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
@@ -97,9 +96,9 @@ resource blobAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 resource queueRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
-  name: guid(resourceGroup().id, prefix, 'worker-queue')
+  name: guid(resourceGroup().id, namePrefix, 'worker-queue')
   properties: {
-    roleName: '${prefix}-worker-queue-${uniqueString(resourceGroup().id)}'
+    roleName: '${namePrefix}-${names.workerQueueRole}'
     description: 'Inspect queue length for event scaling, and peek, receive or delete messages; no message writes.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
@@ -128,9 +127,9 @@ resource queueAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 resource tableRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = {
-  name: guid(resourceGroup().id, prefix, 'worker-table')
+  name: guid(resourceGroup().id, namePrefix, 'worker-table')
   properties: {
-    roleName: '${prefix}-worker-table-${uniqueString(resourceGroup().id)}'
+    roleName: '${namePrefix}-${names.workerTableRole}'
     description: 'Read and update existing validation claims and status; no entity insert/delete or table management.'
     type: 'CustomRole'
     assignableScopes: [resourceGroup().id]
@@ -154,17 +153,5 @@ resource tableAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
     principalId: workerIdentity.properties.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: tableRole.id
-  }
-}
-resource registryAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  scope: registry
-  name: guid(registry.id, workerIdentity.id, 'pull')
-  properties: {
-    principalId: workerIdentity.properties.principalId
-    principalType: 'ServicePrincipal'
-    roleDefinitionId: subscriptionResourceId(
-      'Microsoft.Authorization/roleDefinitions',
-      '7f951dda-4ed3-4680-a7ca-43fe172d538d'
-    )
   }
 }

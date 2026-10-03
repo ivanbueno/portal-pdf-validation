@@ -1,32 +1,50 @@
 # Fresh Azure deployment through GitHub Actions
 
-This guide provisions and deploys the PDF Validation Portal using the repository's **Deploy Azure** workflow at `.github/workflows/deploy.yml`. Run that workflow for every provisioning and application deployment; do not deploy the Bicep templates or build/push the image by hand. A few one-time prerequisites must be created outside the workflow: the empty resource group, Entra app registration, GitHub OIDC trust, and GitHub environment settings.
+This guide provisions and deploys the PDF Validation Portal using the repository's **Deploy Azure** workflow at `.github/workflows/deploy.yml`. Run that workflow for every provisioning and application deployment; do not deploy the Bicep templates or build/push the image by hand. A few one-time prerequisites must be created outside the workflow: the Entra app registration, GitHub OIDC trust, and GitHub environment settings.
 
 The workflow provisions the shared Azure foundation, builds the image in Azure Container Registry, deploys the Container App with Entra Easy Auth, configures worker and maintenance jobs and alerts, sets Blob Storage CORS, and checks readiness. The first run creates the portal hostname. You then add that hostname as the Entra Web callback before staff sign in.
 
 ## 1. Choose names and collect identifiers
 
-Choose a dedicated Azure subscription, a new resource group, and a lowercase alphanumeric prefix 3–10 characters long. This guide uses `pdf-validation-prod` and `pdfval`. The workflow defaults the prefix to `pdfval`; set `AZURE_PREFIX` explicitly if using another value. Record:
+Choose a dedicated Azure subscription and environment/project tokens. The defaults are `AZURE_ENV=prod` and `AZURE_PROJECT=pdfportal`. Environment tokens allow 1–5 lowercase letters/digits; project tokens allow 1–10. Both start with a letter. These limits keep the current storage and job names within Azure's length limits. Names include a function where it distinguishes purpose, such as `api`, `worker` or `blob`. Each type/function has one instance in this deployment, so instance numbers are omitted. See the [naming inventory and exceptions](azure-naming.md). Record:
 
 - Azure subscription ID
 - Microsoft Entra tenant ID
 - GitHub repository owner and repository name
 - Alert email address, if desired
 
-## 2. Create the resource group
+From the repository root, preview the names before setting up the deployment. Substitute your chosen tokens if they differ from the defaults:
 
-An authorized Azure administrator creates the empty resource group once. This is bootstrap only; all application resources inside it are provisioned by `Deploy Azure`.
+```sh
+python3 scripts/azure_names.py --env prod --project pdfportal
+```
+
+The workflow and Bicep modules share [`infra/names.json`](../infra/names.json); the workflow uses the helper's `--format shell` output for resource lookups and deployment names. Keep this file and the helper in the approved release checkout.
+
+## 2. Prepare the subscription and resource-group names
+
+The subscription-scope foundation creates four groups on the first workflow run. With `AZURE_ENV=prod` and `AZURE_PROJECT=pdfportal`, the layout is:
+
+| Resource group | Resources |
+| --- | --- |
+| `prod-pdfportal-admin-rg` | Runtime and worker managed identities, Premium Container Registry, Log Analytics, action group and alerts |
+| `prod-pdfportal-net-rg` | Worker VNet, subnets, NSG, four private endpoints and linked private DNS zones |
+| `prod-pdfportal-app-rg` | API and worker Container Apps environments, API Container App, worker and maintenance jobs, Easy Auth |
+| `prod-pdfportal-data-rg` | Storage account, Blob container, queue, table, storage role assignments and worker custom role definitions |
+
+Azure may also create a service-managed infrastructure resource group for the VNet-integrated Container Apps environment. Azure owns that group's lifecycle; the four groups above contain the resources declared by this repository. See [Container Apps networking](https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks).
+
+Set `AZURE_LOCATION` to the approved Azure region (for example `westus2`). The workflow uses it for the deployment record and every regional resource. Keep the same environment, project and region on subsequent runs. This layout assumes a fresh deployment; it does not move resources from a previous single-group installation.
 
 ```sh
 az login
 SUBSCRIPTION_ID="YOUR_SUBSCRIPTION_ID"
-RESOURCE_GROUP=pdf-validation-prod
-LOCATION=westus2
 az account set --subscription "$SUBSCRIPTION_ID"
-az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 ```
 
-The deployment identity in the next step needs resource creation, ACR build, and role assignment permissions scoped to this resource group. Allow the `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.Storage`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Network`, and `Microsoft.Authorization` providers to register. An administrator may register these providers ahead of time if the deployment identity cannot.
+The deployment identity needs permission to create subscription deployments and resource groups, deploy into all four groups, build images in ACR, and create role definitions/assignments in admin and data. On a dedicated subscription, **Contributor** plus **User Access Administrator** at subscription scope is a straightforward bootstrap setup. For narrower access, an administrator can precreate the four groups, grant Contributor on each and User Access Administrator on admin/data, and supply a subscription-scoped custom role permitting deployment operations and resource-group reads/writes. Resource-group-only grants are insufficient for these subscription-scope entry points. Worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone is insufficient. Runtime identities retain only the resource-scoped grants declared in Bicep.
+
+Allow the following resource providers to register. An administrator may register them ahead of time if the deployment identity cannot.
 
 ```sh
 for provider in \
@@ -64,19 +82,9 @@ done
 3. Under **Expose an API**, set the Application ID URI to `api://<APPLICATION_CLIENT_ID>`. Set `api.requestedAccessTokenVersion` to `2` in the app manifest.
 4. Add an enabled delegated scope named `Validation.Access` with **Who can consent: Admins only** for approved integrations that call on behalf of a user. Delegated tokens must include both this scope and the signed-in user's `Validation.User` role.
 
-> In the portal/API app registration (the one named PDF Validation > Portal):
+> In the portal/API app registration named **PDF Validation Portal**, open **Expose an API**. Save `api://<APPLICATION_CLIENT_ID>` as the Application ID URI if it is not already configured. Select **Add a scope**, enter `Validation.Access`, set **Who can consent** to **Admins only**, and supply the admin consent display name and description. For example: “Access PDF Validation Portal on behalf of the signed-in user.” Leave the scope enabled and save it.
 >
-> a. Open Expose an API. If you haven’t set an Application ID URI yet, > select Add and save the suggested api://<application-client-id> URI.
-> b. Select Add a scope.
-> c. Set Scope name to Validation.Access.
-> d. Set Who can consent to **Admins only**.
-> e. Fill in the admin consent display names and descriptions. For example: “Access PDF Validation Portal on > behalf of the signed-in user.”
-> f. Leave State set to Enabled, then select Add scope.
->
-> The resulting scope identifier is:
-> api://<APPLICATION_CLIENT_ID>/Validation.Access
->
-> An integration’s app registration must then request this delegated > permission under API permissions → Add a permission → My APIs → PDF > Validation Portal → Delegated permissions. Have an Entra administrator grant consent on the integration's app registration. Assign each signed-in user the portal's Validation.User role; client consent does not assign that role. Microsoft’s guide to exposing an API scope has > the corresponding portal steps.
+> The scope identifier is `api://<APPLICATION_CLIENT_ID>/Validation.Access`. In an integration's registration, select **API permissions > Add a permission > My APIs > PDF Validation Portal > Delegated permissions** and request that scope. An Entra administrator must grant consent on the integration registration. Each signed-in user also needs the portal's `Validation.User` role; client consent does not assign that role.
 
 5. Add these enabled app roles under **App roles**:
    - `Validation.User`, allowed member types **Users/Groups**
@@ -84,15 +92,15 @@ done
 
 For each role, create an enabled app role in the PDF Validation Portal app registration. In App roles → Create app role, set:
 
-|Field	| Validation.User	| Validation.Run|
-| -------- | -------- | -------- |
-|Display name | Validation User | Validation Run|
-|Allowed member types | Users/Groups | Applications|
-|Value | Validation.User | Validation.Run|
-|Description | Allows assigned staff to use the PDF Validation Portal. | Allows an approved integration application to run  PDF validations.|
-|Do you want to enable this app role? | Yes | Yes|
+| Field | Validation.User | Validation.Run |
+| --- | --- | --- |
+| Display name | Validation User | Validation Run |
+| Allowed member types | Users/Groups | Applications |
+| Value | `Validation.User` | `Validation.Run` |
+| Description | Allows assigned staff to use the PDF Validation Portal. | Allows an approved integration application to run PDF validations. |
+| Do you want to enable this app role? | Yes | Yes |
 
-The Value is the exact role string the application checks in the validated claims. Assign Validation.User to staff or groups, and Validation. Run only to approved integration service principals.
+The Value is the exact role string the application checks in the validated claims. Assign Validation.User to staff or groups, and `Validation.Run` only to approved integration service principals.
 
 6. Under **Certificates & secrets**, create a client secret for Easy Auth. Copy the secret **Value**; GitHub will store it in step 6. Choose an expiry that supports your rotation policy.
 7. Assign approved users and integrations, then require assignment on the portal's enterprise application using the steps below.
@@ -127,38 +135,18 @@ Create a Microsoft Entra service principal dedicated to deployments. Configure a
 
 Replace `<OWNER>` and `<REPOSITORY>` with the exact GitHub repository path. The subject must match because the workflow declares `environment: production`.
 
-Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment grants the runtime and worker identities their respective storage permissions and AcrPull access. A typical setup grants **Contributor** and **User Access Administrator** scoped to this resource group. The worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone cannot create these definitions. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
+The deployment identity needs permission to create subscription deployments and resource groups, deploy into all four groups, build images in ACR, and create role definitions/assignments in admin and data. On a dedicated subscription, **Contributor** plus **User Access Administrator** at subscription scope is a straightforward bootstrap setup. For narrower access, an administrator can precreate the four groups, grant Contributor on each and User Access Administrator on admin/data, and supply a subscription-scoped custom role permitting deployment operations and resource-group reads/writes. Resource-group-only grants are insufficient for these subscription-scope entry points. Worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone is insufficient. Runtime identities retain only the resource-scoped grants declared in Bicep.
+
+Do not enable ACR admin credentials to bypass permissions. Allow time for role propagation before retrying. The foundation creates the groups and grants the runtime and worker identities storage permissions and AcrPull.
 
 Record the deployment service principal's **Application (client) ID**. It will be the `AZURE_DEPLOY_CLIENT_ID` value, distinct from the portal/API app registration ID.
 
-> You’ll create a separate Entra app for GitHub deployments, then give > its service principal Azure permissions on the resource group. These > steps require an Entra app administrator and an Azure administrator > with permission to assign roles.
-> 1. Create the deployment app
-> In the Microsoft Entra admin center:
->> 1. Go to Identity → Applications → App registrations → New > >registration.
->> 2. Name it PDF Validation GitHub Deploy.
->> 3. Choose Accounts in this organizational directory only, leave > >redirect URI blank, and select Register.
->> 4. On Overview, copy the Application (client) ID. This becomes > >AZURE_DEPLOY_CLIENT_ID.
->> Creating the app registration creates its service principal in your >> tenant.
-> 2. Add GitHub’s federated credential
->> 1. In the new app, open Certificates & secrets → Federated >credentials > → Add credential. Depending on the portal view, this may >be under > Federated credentials directly in the app’s menu.
->> 2. Choose GitHub Actions deploying Azure resources as the scenario.
->> 3. Enter your exact GitHub organization or user, repository, and the >> production environment.
->> 4. Confirm the credential shows:
->>    - Issuer: https://token.actions.githubusercontent.com
->>    - Subject: repo:<OWNER>/<REPOSITORY>:environment:production
->>    - Audience: api://AzureADTokenExchange
->> 5. Save it.
-> The subject must match the production environment declared in the > workflow. Microsoft’s OIDC setup guide describes configuring the app, > federated credential, and Azure role assignment.
-> 3. Assign Azure permissions at the resource group
-> In the Azure portal:
->> 1. Open Resource groups → your deployment resource group → Access > control (IAM) → Add → Add role assignment.
->> 2. Assign Contributor to the deployment app’s service principal.  Search for PDF Validation GitHub Deploy under Select members.
->> 3. Repeat Add role assignment for User Access Administrator, selecting the same service principal.
->> 4. Confirm both assignments are scoped to this resource group.
->> The workflow creates managed identity role assignments for the app’s storage and registry access, so the deployment identity needs role assignment permissions. If the service principal doesn’t appear immediately in the picker, wait briefly and search again.
-> 4. Put the ID in GitHub
-> Add the copied client ID as the AZURE_DEPLOY_CLIENT_ID environment > variable in the GitHub production environment. The workflow also needs > AZURE_TENANT_ID and AZURE_SUBSCRIPTION_ID there. It authenticates with > OIDC; do not create a deployment client secret.
-> Keep this deployment app separate from the PDF Validation Portal app > registration. The portal registration’s client secret is a different > credential used by Easy Auth.
+To configure the deployment registration in the portals:
+
+1. In Entra, open **Identity > Applications > App registrations > New registration**. Name it `PDF Validation GitHub Deploy`, choose **Accounts in this organizational directory only**, leave redirect URI empty and register it. Copy its **Application (client) ID**; this is `AZURE_DEPLOY_CLIENT_ID`.
+2. Open **Certificates & secrets > Federated credentials > Add credential**, choose the GitHub Actions scenario, and enter the exact organization, repository and `production` environment. Verify the issuer, subject and audience listed above before saving.
+3. In Azure, open **Subscriptions > the dedicated deployment subscription > Access control (IAM) > Add role assignment**. For the bootstrap setup, assign **Contributor** and **User Access Administrator** to the deployment service principal at the approved subscription scope. For narrower permissions, have an administrator configure the alternative in section 2. Allow time for the principal and assignments to propagate.
+4. Record `AZURE_DEPLOY_CLIENT_ID`, `AZURE_TENANT_ID` and `AZURE_SUBSCRIPTION_ID` for the GitHub environment in section 5. Deployment uses OIDC and requires no deployment client secret. Keep this registration separate from the portal/API registration and its Easy Auth secret.
 
 ## 5. Configure the GitHub production environment
 
@@ -169,9 +157,10 @@ In the GitHub repository, open **Settings > Environments** and create an environ
 | `AZURE_DEPLOY_CLIENT_ID` | Deployment service principal application/client ID |
 | `AZURE_TENANT_ID` | Entra tenant ID |
 | `AZURE_SUBSCRIPTION_ID` | Azure subscription ID |
-| `AZURE_RESOURCE_GROUP` | Resource group name from step 2 |
+| `AZURE_ENV` | Environment token; defaults to `prod`; 1–5 lowercase letters/digits, starting with a letter |
+| `AZURE_LOCATION` | Required Azure region, e.g. `westus2`; no workflow default |
 | `API_CLIENT_ID` | Portal/API app registration application/client ID from step 3 |
-| `AZURE_PREFIX` | Chosen prefix; optional only when using `pdfval` |
+| `AZURE_PROJECT` | Project token; defaults to `pdfportal`; 1–10 lowercase letters/digits, starting with a letter |
 | `ALERT_EMAIL` | Operations alert recipient; optional |
 
 Add the Easy Auth client secret **Value** from step 3 as an environment secret named `ENTRA_CLIENT_SECRET`. Do not save it as a variable. The workflow writes it to a temporary parameter file for deployment and removes that file on exit. Configure environment protection or required reviewers to match your release policy.
@@ -180,8 +169,8 @@ Add the Easy Auth client secret **Value** from step 3 as an environment secret n
 
 1. Push the deployment workflow and Bicep templates to the GitHub repository's default branch. The workflow is `.github/workflows/deploy.yml` and is triggered manually.
 2. In GitHub, open **Actions > Deploy Azure > Run workflow**, choose the branch containing the deployment files, and start the run.
-3. Watch the job through these steps: Bicep compile, foundation provisioning, ACR image build, application deployment, CORS update, and readiness check. The build image uses the commit's full Git SHA as its immutable tag.
-4. If the run fails during initial resource provisioning or role propagation, inspect the failed deployment in the Azure resource group's **Deployments** view and the GitHub job log. Resolve the specific permission or provider-registration issue, then rerun the workflow. It is designed to be repeatable.
+3. Watch the job through these steps: deployment settings/name validation, Bicep compile, foundation provisioning, ACR image build, application deployment, CORS update, and readiness check. The build image uses the commit's full Git SHA as its immutable tag.
+4. If the run fails during initial resource provisioning or role propagation, inspect the failed deployment under **Subscriptions > your subscription > Deployments**, then follow failed modules into the relevant resource group's **Deployments** view and the GitHub job log. Resolve the specific permission or provider-registration issue, then rerun the workflow. It is designed to be repeatable.
 5. On success, open the workflow run summary and copy the printed portal URL. The workflow also prints the exact callback URI to configure.
 
 ## 7. Add the callback and complete first sign-in
@@ -218,4 +207,4 @@ Azure's authentication boundary, token validation, and header sanitization can o
 
 ## Subsequent releases and rollback
 
-For every release, run **Actions > Deploy Azure** again. The workflow builds the current commit and deploys that image using its Git SHA; it also reapplies Easy Auth and infrastructure settings. To roll back, rerun the workflow from a commit containing the previous compatible application and infrastructure version. Preserve storage and in-flight job compatibility, and do not disable Easy Auth while the application trusts its validated claims. Do not delete the resource group as a rollback method.
+For every release, run **Actions > Deploy Azure** again. The workflow builds the current commit and deploys that image using its Git SHA; it also reapplies Easy Auth and infrastructure settings. To roll back, rerun the workflow from a commit containing the previous compatible application and infrastructure version. Preserve storage and in-flight job compatibility, and do not disable Easy Auth while the application trusts its validated claims. Do not delete any of the resource groups as a rollback method.

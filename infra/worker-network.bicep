@@ -1,23 +1,14 @@
-param prefix string
+param namePrefix string
 param location string = resourceGroup().location
-param storageName string
-param registryName string
-param logsName string
+param storageId string
+param registryId string
+
+var names = loadJsonContent('./names.json')
 
 // This VNet is dedicated to parser workers. Do not peer it with the API network
 // or place other workloads in either subnet.
 var workerSubnetPrefix = '10.72.0.0/24'
 var privateEndpointSubnetPrefix = '10.72.1.0/27'
-
-resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' existing = {
-  name: storageName
-}
-resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' existing = {
-  name: registryName
-}
-resource logs 'Microsoft.OperationalInsights/workspaces@2023-09-01' existing = {
-  name: logsName
-}
 
 // Required workload-profiles platform dependencies, not general Internet access:
 // https://learn.microsoft.com/azure/container-apps/firewall-integration
@@ -44,7 +35,7 @@ var platformRules = [for (serviceTag, index) in platformServiceTags: {
   }
 }]
 resource workerNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
-  name: '${prefix}-worker-nsg'
+  name: '${namePrefix}-${names.workerNsg}'
   location: location
   properties: {
     securityRules: concat([
@@ -144,13 +135,13 @@ resource workerNsg 'Microsoft.Network/networkSecurityGroups@2024-05-01' = {
 }
 
 resource network 'Microsoft.Network/virtualNetworks@2024-05-01' = {
-  name: '${prefix}-worker-vnet'
+  name: '${namePrefix}-${names.workerVnet}'
   location: location
   properties: {
     addressSpace: { addressPrefixes: ['10.72.0.0/23'] }
     subnets: [
       {
-        name: 'workers'
+        name: '${namePrefix}-${names.workerSubnet}'
         properties: {
           addressPrefix: workerSubnetPrefix
           networkSecurityGroup: { id: workerNsg.id }
@@ -158,7 +149,7 @@ resource network 'Microsoft.Network/virtualNetworks@2024-05-01' = {
         }
       }
       {
-        name: 'private-endpoints'
+        name: '${namePrefix}-${names.privateEndpointSubnet}'
         properties: {
           addressPrefix: privateEndpointSubnetPrefix
           privateEndpointNetworkPolicies: 'Disabled'
@@ -172,10 +163,10 @@ resource network 'Microsoft.Network/virtualNetworks@2024-05-01' = {
 // exceptions. ACR's Premium SKU provides private registry AND layer endpoints.
 // DNS zone groups maintain all registry data endpoint records automatically.
 var privateServices = [
-  { name: 'blob', resourceId: storage.id, zone: 'privatelink.blob.${environment().suffixes.storage}' }
-  { name: 'queue', resourceId: storage.id, zone: 'privatelink.queue.${environment().suffixes.storage}' }
-  { name: 'table', resourceId: storage.id, zone: 'privatelink.table.${environment().suffixes.storage}' }
-  { name: 'registry', resourceId: registry.id, zone: 'privatelink.azurecr.io' }
+  { name: 'blob', endpointName: '${namePrefix}-${names.blobEndpoint}', dnsLinkName: '${namePrefix}-${names.blobDnsLink}', resourceId: storageId, zone: 'privatelink.blob.${environment().suffixes.storage}' }
+  { name: 'queue', endpointName: '${namePrefix}-${names.queueEndpoint}', dnsLinkName: '${namePrefix}-${names.queueDnsLink}', resourceId: storageId, zone: 'privatelink.queue.${environment().suffixes.storage}' }
+  { name: 'table', endpointName: '${namePrefix}-${names.tableEndpoint}', dnsLinkName: '${namePrefix}-${names.tableDnsLink}', resourceId: storageId, zone: 'privatelink.table.${environment().suffixes.storage}' }
+  { name: 'registry', endpointName: '${namePrefix}-${names.registryEndpoint}', dnsLinkName: '${namePrefix}-${names.registryDnsLink}', resourceId: registryId, zone: 'privatelink.azurecr.io' }
 ]
 resource privateDns 'Microsoft.Network/privateDnsZones@2020-06-01' = [for service in privateServices: {
   name: service.zone
@@ -183,7 +174,7 @@ resource privateDns 'Microsoft.Network/privateDnsZones@2020-06-01' = [for servic
 }]
 resource privateDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = [for (service, index) in privateServices: {
   parent: privateDns[index]
-  name: '${prefix}-worker'
+  name: service.dnsLinkName
   location: 'global'
   properties: {
     registrationEnabled: false
@@ -191,13 +182,13 @@ resource privateDnsLinks 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@
   }
 }]
 resource privateEndpoints 'Microsoft.Network/privateEndpoints@2024-05-01' = [for service in privateServices: {
-  name: '${prefix}-worker-${service.name}'
+  name: service.endpointName
   location: location
   properties: {
-    subnet: { id: '${network.id}/subnets/private-endpoints' }
+    subnet: { id: '${network.id}/subnets/${namePrefix}-${names.privateEndpointSubnet}' }
     privateLinkServiceConnections: [
       {
-        name: service.name
+        name: service.endpointName
         properties: {
           privateLinkServiceId: service.resourceId
           groupIds: [service.name]
@@ -214,22 +205,5 @@ resource privateDnsGroups 'Microsoft.Network/privateEndpoints/privateDnsZoneGrou
   }
 }]
 
-resource workerEnvironment 'Microsoft.App/managedEnvironments@2025-01-01' = {
-  name: '${prefix}-worker-env'
-  location: location
-  properties: {
-    vnetConfiguration: {
-      internal: true
-      infrastructureSubnetId: '${network.id}/subnets/workers'
-    }
-    workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
-    appLogsConfiguration: {
-      destination: 'log-analytics'
-      logAnalyticsConfiguration: { customerId: logs.properties.customerId, sharedKey: logs.listKeys().primarySharedKey }
-    }
-  }
-  dependsOn: [privateDnsLinks, privateDnsGroups]
-}
-
-output environmentId string = workerEnvironment.id
+output workerSubnetId string = '${network.id}/subnets/${namePrefix}-${names.workerSubnet}'
 output networkSecurityGroupId string = workerNsg.id

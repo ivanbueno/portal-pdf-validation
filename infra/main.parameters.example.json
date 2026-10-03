@@ -2,8 +2,14 @@
   "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
   "contentVersion": "1.0.0.0",
   "parameters": {
-    "prefix": {
-      "value": "pdfval"
+    "env": {
+      "value": "prod"
+    },
+    "project": {
+      "value": "pdfportal"
+    },
+    "location": {
+      "value": "eastus"
     },
     "imageTag": {
       "value": "REPLACE_WITH_IMMUTABLE_IMAGE_TAG"

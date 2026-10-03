@@ -1,24 +1,28 @@
 # PDF Validation Portal: Tier 1 Support Runbook
 
+For a fresh deployment, confirm the portal URL from the **Deploy Azure** run summary and record the four group names before using this runbook. Replace every `REPLACE_WITH_PORTAL_HOSTNAME` placeholder below with that deployment’s actual hostname. Parent deployment history is at subscription scope; nested module history is in each resource group.
+
+Resource names below use the defaults `env=prod` and `project=pdfportal`. Functions distinguish the API, worker and maintenance resources; each type/function has one instance, so names omit instance numbers. For another environment or project, have DevOps supply the names rendered from [the shared naming map](azure-naming.md) and update the production reference before an incident.
+
 ## 1. Application Information
 
 | Item | Information |
 |---|---|
 | Application name | PDF Validation Portal |
-| Website URL | [Production website](https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io) |
-| Azure Container App name | `pdfval-api` |
-| Resource group | `pdf-validation-prod` |
-| Production environment | GitHub environment `production`; Azure Container Apps environment `pdfval-env` |
+| Website URL | [Production website](https://REPLACE_WITH_PORTAL_HOSTNAME) |
+| Azure Container App name | `prod-pdfportal-app-ca-api` |
+| Resource groups | `prod-pdfportal-admin-rg`, `prod-pdfportal-net-rg`, `prod-pdfportal-app-rg`, `prod-pdfportal-data-rg` |
+| Production environment | GitHub environment `production`; Azure Container Apps environment `prod-pdfportal-app-cae-shared` |
 | Test or staging environment | **TBD: Confirm with application owner**. No staging deployment is defined in the reviewed workflow. |
 | Application owner | **TBD: Confirm with application owner** |
 | Technical contact | **TBD: Confirm with application owner** |
 | Support contact | **TBD: Confirm with application owner** |
 | Escalation contact | **TBD: Confirm with application owner** |
 | Subscription and directory | **TBD: Confirm with application owner** |
-| Azure region | Production hostname identifies `westus2`. Confirm on the resource's Overview page. |
-| Application logs | Log Analytics workspace `pdfval-logs` |
-| Background processing | Container Apps jobs `pdfval-worker` and `pdfval-maintenance` |
-| Data services | Azure Storage: private Blob container `documents`, Queue `validation`, Table `validation`. Storage account name: **TBD: Confirm with application owner**. |
+| Azure region | Use the deployed `AZURE_LOCATION`; confirm on the resource’s Overview page. |
+| Application logs | Log Analytics workspace `prod-pdfportal-admin-law` |
+| Background processing | Container Apps jobs `prod-pdfportal-app-caj-worker` and `prod-pdfportal-app-caj-maint` |
+| Data services | Azure Storage: private Blob container `documents`, Queue `validation`, Table `validation`. Default storage account: `prodpdfportaldatast` in data; confirm the deployed name with the owner. |
 | Application Insights resource | Not provisioned by this repository. Any separately configured resource: **TBD: Confirm with application owner**. |
 | Custom domain | **TBD: Confirm with application owner**. None defined in the reviewed templates. |
 | Restart approver and incident response targets | **TBD: Confirm with application owner** |
@@ -53,17 +57,17 @@ All entries in this table are **Safe to check**. Reading settings does not autho
 
 | Feature | What it is | Why support might look at it | Where to find it |
 |---|---|---|---|
-| Azure Portal | Microsoft's website for viewing and managing Azure services. | Find the affected resources. | `Azure Portal > top search box > Resource groups > pdf-validation-prod` |
-| Container Apps | The service running this website and API. | Check the running version, logs and resources. | `Azure Portal > Container Apps > pdfval-api > Overview` |
-| Resource Group | A named collection of related Azure resources. | Find the application, storage, jobs and logs together. | `Azure Portal > Resource groups > pdf-validation-prod > Overview` |
+| Azure Portal | Microsoft's website for viewing and managing Azure services. | Find the affected resources. | `Azure Portal > top search box > Resource groups > filter prod-pdfportal-` |
+| Container Apps | The service running this website and API. | Check the running version, logs and resources. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview` |
+| Resource Group | A named collection of related Azure resources. | Use app for compute, data for storage, admin for identities/logs/alerts, and net for networking. | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Overview` |
 | Application Insights | Optional monitoring that tracks requests, errors and calls to other services. | Investigate recent errors if the owner confirms it is connected. | Conditional: `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures` |
-| Log Analytics | A place to search saved logs. | Find errors from the app, worker and maintenance job. | `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs` |
-| Log Stream | A live view of messages produced by the application or Azure. | Watch errors while reproducing a problem. | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream` |
-| Metrics | Charts of resource use, requests and failures. | Compare the incident with normal operation. | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics` |
-| Activity Log | A history of Azure management actions. | See who changed a resource and when. It does not show every user request. | `Azure Portal > Resource groups > pdf-validation-prod > Activity log` |
-| Deployment | An update that installs code or resource settings. | Compare an update's time with the incident start. | `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`; also the GitHub workflow linked above. |
-| Application Settings | Values that tell the application how to run. Container Apps calls these environment variables. | Identify a recent change, without exposing values. | `Azure Portal > Container Apps > pdfval-api > Application > Containers > api > Environment variables` |
-| Revision and replica | A revision is a deployed version; a replica is one running copy of that version. | Find the version serving users and check whether its copies are healthy. | `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas` |
+| Log Analytics | A place to search saved logs. | Find errors from the app, worker and maintenance job. | `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs` |
+| Log Stream | A live view of messages produced by the application or Azure. | Watch errors while reproducing a problem. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream` |
+| Metrics | Charts of resource use, requests and failures. | Compare the incident with normal operation. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics` |
+| Activity Log | A history of Azure management actions. | See who changed a resource and when. It does not show every user request. | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log` |
+| Deployment | An update that installs code or resource settings. | Compare an update's time with the incident start. | `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`; also the GitHub workflow linked above. |
+| Application Settings | Values that tell the application how to run. Container Apps calls these environment variables. | Identify a recent change, without exposing values. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Containers > api > Environment variables` |
+| Revision and replica | A revision is a deployed version; a replica is one running copy of that version. | Find the version serving users and check whether its copies are healthy. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas` |
 
 Do not select Edit, Save, Apply or Create when inspecting settings.
 
@@ -78,9 +82,9 @@ Do not select Edit, Save, Apply or Create when inspecting settings.
 | 3. Write down the exact error. | Copy the visible message into the ticket. Take a screenshot with document contents, credentials and personal details removed. | Exact wording distinguishes sign-in, connection and application failures. |
 | 4. Record the time. | Add the first reported failure and your test time to the ticket, with time zone. | These times let the next team find the matching logs. |
 | 5. Check who is affected. | Ask the reporter which page failed and whether an authorized colleague has the same problem. If allowed, compare on another approved network. | One user, one office and all users suggest different causes. Do not use someone else's credentials. |
-| 6. Check the app is running. | `Azure Portal > Container Apps > pdfval-api > Overview`; confirm resource group. Then `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`; open the active revision. | Check running status and ready replicas. Running alone does not prove sign-in, storage or PDF processing works. See Section 5.1. |
-| 7. Check errors. | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`, then `Console`. Also `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; follow Section 5.4. | Repeated 5xx errors, failed health checks or crashes explain real impact. If Application Insights is separately configured, follow Section 5.2. |
-| 8. Check recent deployment. | [GitHub repository](https://github.com/ivanbueno/portal-pdf-validation) > `Actions > Deploy Azure > latest run > deploy`. In Azure: `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`. | Record the commit, start/end time, result and failed step. Success does not guarantee all user actions work. |
+| 6. Check the app is running. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview`; confirm resource group. Then `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`; open the active revision. | Check running status and ready replicas. Running alone does not prove sign-in, storage or PDF processing works. See Section 5.1. |
+| 7. Check errors. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`, then `Console`. Also `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; follow Section 5.4. | Repeated 5xx errors, failed health checks or crashes explain real impact. If Application Insights is separately configured, follow Section 5.2. |
+| 8. Check recent deployment. | [GitHub repository](https://github.com/ivanbueno/portal-pdf-validation) > `Actions > Deploy Azure > latest run > deploy`. In Azure: `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`. | Record the commit, start/end time, result and failed step. Success does not guarantee all user actions work. |
 | 9. Check Azure service problems. | `Azure Portal > Service Health > Service issues`; select the affected subscription, region and services. Open a matching event. Some portal views call this page `Incidents`. | A matching Azure incident may explain the outage. Copy its tracking ID and impact. If the portal is unavailable, check [Azure status](https://azure.status.microsoft). |
 | 10. Take a safe action or escalate. | Refresh once or retry sign-in once if no work is in progress. Add evidence to the ticket. Use the team's escalation route from Section 1. | Restart only with recorded approval and Section 6. Never change settings to experiment. |
 
@@ -100,7 +104,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Check the active revision and both health URLs in Section 5.1.
 3. Compare errors with deployments and Service Health.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`; `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream`.
 
 **What good looks like:** A ready running revision, successful health checks and a usable page for an authorized user.
 
@@ -120,7 +124,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Compare response time, requests, CPU and memory using Sections 5.4 to 5.6.
 3. For queued or running PDFs, check worker execution history and storage using Section 5.9.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Monitoring > Execution history`.
 
 **What good looks like:** Page times resemble a healthy period; jobs make progress. Validation can take up to five minutes per standard, plus queue time.
 
@@ -140,7 +144,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Search request logs for status 500 and the same request ID using Section 7.
 3. Compare the first error with the latest deployment.
 
-**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`; conditional: `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures`.
+**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`; conditional: `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures`.
 
 **What good looks like:** The action completes without a server error.
 
@@ -160,7 +164,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Compare `/health/live` with `/health/ready` using Section 5.1.
 3. Check storage health, resource use and recent deployments.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`; `Azure Portal > Storage accounts > [confirmed storage account] > Resource health`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`; `Azure Portal > Storage accounts > [confirmed storage account] > Resource health`.
 
 **What good looks like:** Ready replicas, successful health checks and no repeated gateway errors.
 
@@ -200,7 +204,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Check that the affected user owns the document and that it has not expired or been deleted.
 3. Check whether failures began after a deployment. A missing, expired, deleted or another user's document intentionally returns the same 404.
 
-**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`; `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`.
+**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`; `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`.
 
 **What good looks like:** Current navigation and the user's unexpired documents work.
 
@@ -220,7 +224,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Try a private window once with the user's own authorized work account.
 3. Check sign-in logs and recent authentication changes. The expected callback is the production URL followed by `/.auth/login/aad/callback`.
 
-**Where to go in Azure:** `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs`; `Azure Portal > Container Apps > pdfval-api > Settings > Authentication`; `Azure Portal > Microsoft Entra ID > App registrations > [confirmed portal registration] > Authentication`.
+**Where to go in Azure:** `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Authentication`; `Azure Portal > Microsoft Entra ID > App registrations > [confirmed portal registration] > Authentication`.
 
 **What good looks like:** Sign-in completes and the user can view their workspace. A 401 before signing in is expected.
 
@@ -240,7 +244,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Check sign-in, document ownership and expiration. A public homepage loading does not prove protected APIs work.
 3. Check request logs, readiness and the worker's execution history.
 
-**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`; `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`.
+**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`; `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Monitoring > Execution history`.
 
 **What good looks like:** Authorized users can load current documents and completed reports. A report may be unavailable while processing is unfinished.
 
@@ -280,7 +284,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Compare the error with [API documentation](api.md): 401/403 access, 404 ownership/expiration, 409 state/conflict, 413 size, 422 invalid input, 500/503 service failure.
 3. For direct uploads, identify storage as the failing host. For stuck processing, check worker history.
 
-**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`; `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`.
+**Where to go in Azure:** `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`; `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Monitoring > Execution history`.
 
 **What good looks like:** Requests return the documented success code and the document moves through its expected states.
 
@@ -300,7 +304,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Try the confirmed hostname from another approved device/network, if policy permits.
 3. If a custom domain is reported, check its recorded binding and ask the network team to inspect DNS, the service that maps website names to addresses.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Overview > Application URL`; if applicable, `Azure Portal > Container Apps > pdfval-api > Settings > Custom domains`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview > Application URL`; if applicable, `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Custom domains`.
 
 **What good looks like:** The correct hostname resolves and reaches the expected site.
 
@@ -320,7 +324,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Use the browser's connection information to inspect the certificate name and expiry without continuing through the warning.
 3. For a confirmed custom domain, inspect its certificate binding. For the default Azure hostname, route to DevOps for platform investigation.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Settings > Custom domains`; `Azure Portal > Service Health > Service issues`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Custom domains`; `Azure Portal > Service Health > Service issues`.
 
 **What good looks like:** HTTPS opens without warnings and the certificate covers the hostname and current date.
 
@@ -340,7 +344,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Open the GitHub workflow run; record commit, result and failed step, if any.
 3. Compare the serving revision's image tag and Azure change times. The newest attempted revision may not be the one serving users.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`; `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`; `Azure Portal > Resource groups > pdf-validation-prod > Activity log`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`; `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`; `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log`.
 
 **What good looks like:** The intended revision serves traffic and affected user actions work.
 
@@ -360,7 +364,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Read system logs for crashes, health-check failures and out-of-memory messages.
 3. Compare CPU, memory and deployment times. A worker job finishing is normal and is not an API restart.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`.
 
 **What good looks like:** Stable API replicas without repeated restarts outside expected release activity.
 
@@ -380,7 +384,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Compare against a healthy period, request volume and the replica's configured CPU limit.
 3. Distinguish API usage from PDF worker usage; validation jobs legitimately use CPU.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; `Azure Portal > Container Apps > pdfval-api > Application > Containers > api`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Containers > api`.
 
 **What good looks like:** Usage returns toward baseline after busy periods and users can work.
 
@@ -400,7 +404,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 2. Check whether memory drops after normal work or keeps rising.
 3. Match system-log failures with restart counts and recent releases.
 
-**Where to go in Azure:** `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`.
+**Where to go in Azure:** `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`.
 
 **What good looks like:** Stable memory with room below the limit and no memory-related terminations.
 
@@ -416,12 +420,12 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 
 **Safe to check. For this production Container App:**
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Overview`.
-2. Confirm resource group `pdf-validation-prod`, subscription and Application URL. If they do not match Section 1, stop and ask Tier 2 to identify the resource.
-3. Go to `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`. Some views label this `Revisions and replica` or `Revision management`.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview`.
+2. Confirm resource group `prod-pdfportal-app-rg`, subscription and Application URL. If they do not match Section 1, stop and ask Tier 2 to identify the resource.
+3. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`. Some views label this `Revisions and replica` or `Revision management`.
 4. Select the active revision serving traffic. Record its name, running/health status, ready replica count and image tag. Expected template configuration is one active revision and 1 to 3 API replicas.
-5. Open [liveness](https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io/health/live) in a browser tab. Expected: `{"status":"ok"}`.
-6. Open [readiness](https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io/health/ready). Expected: `{"status":"ready"}`. Record errors and times; do not repeatedly refresh.
+5. Open [liveness](https://REPLACE_WITH_PORTAL_HOSTNAME/health/live) in a browser tab. Expected: `{"status":"ok"}`.
+6. Open [readiness](https://REPLACE_WITH_PORTAL_HOSTNAME/health/ready). Expected: `{"status":"ready"}`. Record errors and times; do not repeatedly refresh.
 
 Liveness proves the application process answers. Readiness also checks access to Blob, Queue and Table Storage. Neither proves sign-in, browser uploads or PDF validation works. Confirm the originally reported action separately. “Running” describes execution, not full service health. Failed or degraded revisions require logs and escalation. See [Microsoft's startup troubleshooting guide](https://learn.microsoft.com/en-us/azure/container-apps/troubleshoot-container-start-failures).
 
@@ -441,7 +445,7 @@ Good means relevant requests are present and failures are not elevated. Empty da
 
 **Safe to check.**
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream`.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream`.
 2. Select **System** for platform events, such as startup and health-check failures.
 3. Select **Console** for application messages. Choose the serving revision, replica and container `api` when selectors appear.
 4. Observe while reproducing a safe read-only action once. Record the timestamp and short relevant messages.
@@ -453,7 +457,7 @@ Do not enable additional logging or use a command console. If logging is unavail
 
 **Safe to check.** A 4xx code usually means a rejected or invalid request. A 5xx code means the service could not complete it.
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`.
 2. Set the incident time range. Select **Requests**, aggregation **Sum**.
 3. Choose **Apply splitting > Status Code Category**. Inspect 4xx and 5xx. Split by **Status Code** for individual codes.
 4. Compare error counts with total requests and the period before the incident. Record chart time zone, filters and affected revision.
@@ -465,10 +469,10 @@ Routine unauthenticated 401s or expired-document 404s can be expected. A sudden 
 
 **Safe to check.**
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`.
 2. Chart **CPU Usage** and **Memory Working Set Bytes** separately. Use the incident range and compare with an earlier healthy period.
 3. Use **Apply splitting > Replica** and filter the serving revision. Inspect average and maximum where offered; an average can hide one overloaded copy.
-4. Compare with configured limits at `Azure Portal > Container Apps > pdfval-api > Application > Containers > api`. Read only.
+4. Compare with configured limits at `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Containers > api`. Read only.
 5. Capture units, limits, peak/time, replica and the related symptom. CPU measured in nanocores is not a percentage. One CPU core equals 1,000,000,000 nanocores.
 
 Repository defaults are **0.5 CPU / 1 GiB per API replica**, **2 CPU / 4 GiB per worker execution**, and **0.5 CPU / 1 GiB for maintenance**. Compare each component to its own limit. Do not compare a total across replicas to one replica's limit. Sustained near-limit use with errors, latency or memory terminations needs escalation; brief processing spikes alone do not prove an incident. Approved thresholds: **TBD: Confirm with application owner**.
@@ -477,9 +481,9 @@ Repository defaults are **0.5 CPU / 1 GiB per API replica**, **2 CPU / 4 GiB per
 
 **Safe to check.**
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`.
 2. If available, select **Average Response Time (Preview)**. Compare the incident with a healthy period using the same units and filters.
-3. If unavailable or empty, go to `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs` and run the response-time query in Section 7.
+3. If unavailable or empty, go to `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs` and run the response-time query in Section 7.
 4. Record a timed browser check of the affected action. Application request times do not include all browser/network delay or the time a PDF waits for a worker.
 
 The Metrics choices in Sections 5.4 to 5.6 follow the [Container Apps metrics reference](https://learn.microsoft.com/en-us/azure/container-apps/metrics). Preview metrics may not be available in every deployment.
@@ -492,9 +496,9 @@ The Metrics choices in Sections 5.4 to 5.6 follow the [Container Apps metrics re
 
 1. Open [Deploy Azure](https://github.com/ivanbueno/portal-pdf-validation/actions/workflows/deploy.yml). Select the latest run, then **Summary**. Record status, commit and start/end times.
 2. Select **deploy**, then inspect the failing step or **Deploy application**. The workflow's summary reports the portal URL; its final readiness check should succeed.
-3. Go to `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`. Open `portal` or `foundation`, inspect status/time and **Operation details** for failures. Reused deployment names are not a complete release history; use GitHub for older runs.
-4. Go to `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`; open the serving revision and record its image tag. Images are tagged with the Git commit ID.
-5. If needed, inspect job image details at `Azure Portal > Container App Jobs > pdfval-worker > Settings > Containers` and the same path for `pdfval-maintenance`.
+3. Go to `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`. Open `prod-pdfportal-app-deploy-portal` or `prod-pdfportal-admin-deploy-foundation`, inspect status/time and **Operation details** for failures. Reused deployment names are not a complete release history; use GitHub for older runs.
+4. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`; open the serving revision and record its image tag. Images are tagged with the Git commit ID.
+5. If needed, inspect job image details at `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Settings > Containers` and the same path for `prod-pdfportal-app-caj-maint`.
 
 A failed workflow can leave partial changes. A successful workflow checks readiness but does not prove sign-in or end-to-end validation. Do not click Run workflow, Re-run jobs, Redeploy, activate/deactivate a revision, or alter traffic.
 
@@ -502,7 +506,7 @@ A failed workflow can leave partial changes. A successful workflow checks readin
 
 **Safe to check.**
 
-1. Go to `Azure Portal > Resource groups > pdf-validation-prod > Activity log`.
+1. Go to `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log`.
 2. Set the incident range, starting before the first failure; select **Apply** if shown. Include all statuses.
 3. Open changes affecting the app, environment, storage, identity or jobs.
 4. Record operation name, resource, caller, status, time and correlation ID. If **Change history** is offered, inspect property names without copying secret values.
@@ -513,10 +517,10 @@ Activity Log records management changes, not every request, background restart, 
 
 **Safe to check.** A dependency is another service the application needs.
 
-1. Go to `Azure Portal > Resource groups > pdf-validation-prod > Overview`. Find the Storage account, jobs and Container Apps environment by resource type. Confirm the storage account with the owner before using its data pages.
+1. Go to `Azure Portal > Resource groups > prod-pdfportal-data-rg > Overview` for Storage, and `prod-pdfportal-app-rg > Overview` for jobs and Container Apps environments. Logs and identities are in admin; worker networking is in net. Confirm the deployed group names and storage account with the owner before using their data pages.
 2. Go to `Azure Portal > Storage accounts > [confirmed storage account] > Resource health`. Then `Azure Portal > Storage accounts > [confirmed storage account] > Monitoring > Metrics`; select the Blob, Queue or Table service metric namespace as relevant. Inspect **Availability**, **Transactions** by **Response type**, and **Success E2E Latency** for the incident window where available.
-3. Go to `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`. Select a failed or delayed execution and **View logs** if offered. Repeat for `pdfval-maintenance`. Recent successful work and maintenance are expected; an idle worker is normal when no documents are queued.
-4. Check existing alerts at `Azure Portal > Monitor > Alerts`; filter resource group `pdf-validation-prod` and the incident range. Template alerts cover processing/maintenance errors, failed jobs and backlog. No alert email does not prove health; recipients are optional.
+3. Go to `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Monitoring > Execution history`. Select a failed or delayed execution and **View logs** if offered. Repeat for `prod-pdfportal-app-caj-maint`. Recent successful work and maintenance are expected; an idle worker is normal when no documents are queued.
+4. Check existing alerts at `Azure Portal > Monitor > Alerts`; filter resource group `prod-pdfportal-admin-rg` and the incident range. Template alerts cover processing/maintenance errors, failed jobs and backlog. No alert email does not prove health; recipients are optional.
 5. For login, go to `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs`; filter the confirmed portal application and incident time. A permitted identity administrator may need to collect this evidence.
 6. If Application Insights was added separately, go to `Azure Portal > Application Insights > [confirmed resource] > Investigate > Performance > Dependencies`. Select a slow/failed dependency and a sample to identify the affected service. See [Microsoft's dependency investigation guide](https://learn.microsoft.com/en-us/azure/azure-monitor/app/dependencies).
 
@@ -546,8 +550,8 @@ Record in the restricted support ticket:
 
 ### Approved Container App restart
 
-1. Confirm approval and target `pdfval-api` in `pdf-validation-prod`.
-2. Go to `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`.
+1. Confirm approval and target `prod-pdfportal-app-ca-api` in `prod-pdfportal-app-rg`.
+2. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`.
 3. Select the **active revision currently serving traffic**. Recheck its name against the ticket.
 4. Use that revision's **Restart** action, which may appear in its `...` menu, and confirm the prompt once. If Restart is absent or the target is unclear, stop and have DevOps perform the approved revision restart. Do not use Deactivate, Stop, Delete, or Create new revision as substitutes.
 5. Record the action time. Refresh revision status during the approved observation window.
@@ -569,16 +573,16 @@ For this portal, check ready replicas, both health URLs, the originally failing 
 | Application Insights, conditional | Recorded request and dependency behavior, if connected. | `Azure Portal > Application Insights > [confirmed resource] > Overview` | Correct resource and fresh data. | Resource name, selected time range, whether telemetry exists. |
 | Failures, conditional | Failed operations and response codes. | `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures` | Error increases at the incident time. | Operation name, code, count, time and operation ID. |
 | Exceptions, conditional | Recorded application exceptions. | `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures > Exceptions` | Repeating exception types and failing components. | Sanitized type, brief message, sample time and operation ID. |
-| Log Stream | Live application messages and Azure platform events. | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > Console` or `System` | Crashes, readiness failures, denied access and repeated errors. | Short sanitized excerpt, timestamp, revision, replica and stream type. |
-| Saved logs | Earlier API, worker and maintenance events. | `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs` | `storage_unavailable`, `validation_infrastructure_error`, request 5xx, or `maintenance_finished` with failures above zero. | Event, time, request/document ID if permitted, revision/job and error type. |
-| Metrics | Counts and trends, not exception details. | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics` | Errors, resource pressure, latency or restarts near the failure. | Sanitized chart with range, units, filters and aggregation. |
-| Activity Log | Resource management changes. | `Azure Portal > Resource groups > pdf-validation-prod > Activity log` | Writes, role/configuration changes, restart actions and failed operations. | Operation, resource, time, caller, status and correlation ID. |
-| Deployment logs | Release steps and results. | `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments > [deployment] > Operation details`; GitHub `Actions > Deploy Azure > [run] > deploy` | Failed provisioning, image build/start, or readiness steps. | Run link, commit, result, times, failed step and sanitized error. |
-| Job history | Whether background processing executed. | `Azure Portal > Container App Jobs > [pdfval-worker or pdfval-maintenance] > Monitoring > Execution history > [execution]` | Failed executions, long-running work, or missed progress. | Job/execution name, state, start/end times and relevant log event. |
+| Log Stream | Live application messages and Azure platform events. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > Console` or `System` | Crashes, readiness failures, denied access and repeated errors. | Short sanitized excerpt, timestamp, revision, replica and stream type. |
+| Saved logs | Earlier API, worker and maintenance events. | `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs` | `storage_unavailable`, `validation_infrastructure_error`, request 5xx, or `maintenance_finished` with failures above zero. | Event, time, request/document ID if permitted, revision/job and error type. |
+| Metrics | Counts and trends, not exception details. | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics` | Errors, resource pressure, latency or restarts near the failure. | Sanitized chart with range, units, filters and aggregation. |
+| Activity Log | Resource management changes. | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log` | Writes, role/configuration changes, restart actions and failed operations. | Operation, resource, time, caller, status and correlation ID. |
+| Deployment logs | Release steps and results. | `Azure Portal > Subscriptions > [confirmed subscription] > Deployments > [deployment] > Operation details`; GitHub `Actions > Deploy Azure > [run] > deploy` | Failed provisioning, image build/start, or readiness steps. | Run link, commit, result, times, failed step and sanitized error. |
+| Job history | Whether background processing executed. | `Azure Portal > Container App Jobs > [prod-pdfportal-app-caj-worker or prod-pdfportal-app-caj-maint] > Monitoring > Execution history > [execution]` | Failed executions, long-running work, or missed progress. | Job/execution name, state, start/end times and relevant log event. |
 
 ### Search saved logs
 
-1. Go to `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`.
+1. Go to `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`.
 2. If a query gallery opens, close it. Select the query editor or **KQL mode** if the page starts in a simple mode. KQL is Azure's log search language.
 3. Paste one query below and select **Run**. These only read logs.
 4. Each query below covers the last hour. For an older incident, replace the time filter with `TimeGenerated between (datetime(2026-09-28T18:45:00Z) .. datetime(2026-09-28T19:15:00Z))`, using the actual incident's UTC times, and set the portal time picker to include them.
@@ -589,7 +593,7 @@ Recent API errors, with only selected fields:
 ```kusto
 ContainerAppConsoleLogs_CL
 | where TimeGenerated > ago(1h)
-| where ContainerAppName_s == "pdfval-api"
+| where ContainerAppName_s == "prod-pdfportal-app-ca-api"
 | extend e = parse_json(Log_s)
 | where (tostring(e.event) == "request" and toint(e.status) >= 400)
     or tostring(e.event) == "storage_unavailable"
@@ -605,7 +609,7 @@ Application response-time trend:
 ```kusto
 ContainerAppConsoleLogs_CL
 | where TimeGenerated > ago(1h)
-| where ContainerAppName_s == "pdfval-api"
+| where ContainerAppName_s == "prod-pdfportal-app-ca-api"
 | extend e = parse_json(Log_s)
 | where tostring(e.event) == "request"
 | summarize requests=count(), errors5xx=countif(toint(e.status) >= 500),
@@ -630,7 +634,7 @@ ContainerAppConsoleLogs_CL
 | take 100
 ```
 
-The deployment sends logs to Log Analytics with 30-day retention. These queries match the repository's structured event fields and configured `ContainerAppConsoleLogs_CL` table. They have not been executed against the live workspace. For platform events, also inspect `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`; a process killed by Azure may not write its own error event. See [Microsoft's saved-log guide](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
+The deployment sends logs to Log Analytics with 30-day retention. These queries match the repository's structured event fields and configured `ContainerAppConsoleLogs_CL` table. They have not been executed against the live workspace. For platform events, also inspect `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`; a process killed by Azure may not write its own error event. See [Microsoft's saved-log guide](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
 
 To collect an API request ID without secrets, open the browser's developer tools, select **Network**, reproduce a safe read once, choose that request, then inspect **Headers > Response Headers > X-Request-ID**. Copy only that ID, the status code and URL path without query strings. Do not copy request headers, cookies or upload grants.
 
@@ -640,13 +644,13 @@ To collect an API request ID without secrets, open the browser's developer tools
 
 | Change | Where to check | Record |
 |---|---|---|
-| New deployment | GitHub `Actions > Deploy Azure > [run]`; `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments` | Start/end time, commit, result and current serving revision. |
-| Application configuration | `Azure Portal > Container Apps > pdfval-api > Activity log`; read current names at `Azure Portal > Container Apps > pdfval-api > Application > Containers > api > Environment variables` | Time, caller, operation and changed property names. Do not copy values. |
-| Explicit restart or resource update | `Azure Portal > Container Apps > pdfval-api > Activity log` | Operation, time, caller and outcome. |
-| Automatic crash/restart | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics > Total Replica Restart Count`; `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System` | Replica, time, surrounding error and whether a deployment was underway. |
-| Storage or identity permissions | `Azure Portal > Resource groups > pdf-validation-prod > Activity log`; `Azure Portal > Storage accounts > [confirmed storage account] > Activity log` | Resource, operation, caller and correlation ID. |
+| New deployment | GitHub `Actions > Deploy Azure > [run]`; `Azure Portal > Subscriptions > [confirmed subscription] > Deployments` | Start/end time, commit, result and current serving revision. |
+| Application configuration | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Activity log`; read current names at `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Containers > api > Environment variables` | Time, caller, operation and changed property names. Do not copy values. |
+| Explicit restart or resource update | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Activity log` | Operation, time, caller and outcome. |
+| Automatic crash/restart | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics > Total Replica Restart Count`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System` | Replica, time, surrounding error and whether a deployment was underway. |
+| Storage or identity permissions | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log`; `Azure Portal > Storage accounts > [confirmed storage account] > Activity log` | Resource, operation, caller and correlation ID. |
 | Entra/sign-in change | `Azure Portal > Microsoft Entra ID > Monitoring & health > Audit logs`; `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs` | Application, change/error, timestamp and correlation ID. Identity team may need to supply these. |
-| Other connected service | `Azure Portal > Resource groups > pdf-validation-prod > Overview > [confirmed dependency] > Activity log`; external service's owner-approved change record | Service, maintenance/change time and observed effect. |
+| Other connected service | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Overview > [confirmed dependency] > Activity log`; external service's owner-approved change record | Service, maintenance/change time and observed effect. |
 
 1. Write the last successful use and first failed use in UTC.
 2. Place deployment, configuration, sign-in and restart events on that same timeline.
@@ -697,7 +701,7 @@ Application: PDF Validation Portal
 Environment: Production
 Website URL (no query string):
 Azure subscription / directory (if known):
-Resource group: pdf-validation-prod
+Resource groups: prod-pdfportal-admin-rg / prod-pdfportal-net-rg / prod-pdfportal-app-rg / prod-pdfportal-data-rg
 App / serving revision / replica:
 Incident severity / business impact:
 
@@ -745,8 +749,8 @@ Next agreed update time:
 
 | Emergency | First actions | Stop and escalate to |
 |---|---|---|
-| Entire website is down | Record URL, time and error; confirm another user if quickly possible. Check `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas` and `Azure Portal > Service Health > Service issues`. | Tier 2, incident lead and DevOps immediately. No unapproved restart or deployment. |
-| Website is extremely slow | Record business impact and one timed action. Check `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`. Ask users to avoid duplicate submissions. | Tier 2, DevOps and developers when normal work is effectively blocked. No load tests or scaling. |
+| Entire website is down | Record URL, time and error; confirm another user if quickly possible. Check `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas` and `Azure Portal > Service Health > Service issues`. | Tier 2, incident lead and DevOps immediately. No unapproved restart or deployment. |
+| Website is extremely slow | Record business impact and one timed action. Check `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`. Ask users to avoid duplicate submissions. | Tier 2, DevOps and developers when normal work is effectively blocked. No load tests or scaling. |
 | Database/data service unavailable | Check readiness and `Azure Portal > Storage accounts > [confirmed storage account] > Resource health`. This deployment uses Storage. | DevOps/storage owner immediately; database team if a database is confirmed. No data edits or credential changes. |
 | Login unavailable for all users | Record Entra error/correlation ID and time. Check `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs` if permitted. | Identity/security team and DevOps immediately. Do not disable authentication or MFA. |
 | Azure has an outage | Open `Azure Portal > Service Health > Service issues > [matching issue]`. Record tracking ID, affected region/services and last update. | Incident lead and DevOps; authorized owner engages Azure support. Follow approved communications and recovery decisions. |
@@ -778,14 +782,14 @@ When unsure, collect information and escalate. Reading a Microsoft troubleshooti
 
 ### Website Down: one-page checklist
 
-**Production:** [PDF Validation Portal](https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io) · `pdf-validation-prod` · Container App `pdfval-api`.
+**Production:** [PDF Validation Portal](https://REPLACE_WITH_PORTAL_HOSTNAME) · `prod-pdfportal-app-rg` · Container App `prod-pdfportal-app-ca-api`.
 
 **Broad outage, security concern or unexpected data loss: escalate immediately.** Contacts: **TBD: Confirm with application owner**; use the existing service desk/on-call process.
 
 1. Confirm the website is down. Try the exact URL once; check affected users.
 2. Record the error and time. Include time zone, HTTP code and sanitized screenshot.
 3. Check the app status and serving revision. Test `/health/live` and `/health/ready`.
-4. Check Application Insights **only if configured**; otherwise use `pdfval-logs`.
+4. Check Application Insights **only if configured**; otherwise use `prod-pdfportal-admin-law`.
 5. Check 5xx errors and whether valid user requests fail.
 6. Check Log Stream: System for platform failures, Console for app errors.
 7. Check recent deployments. Record GitHub run, result and commit.
@@ -795,15 +799,15 @@ When unsure, collect information and escalate. Reading a Microsoft troubleshooti
 
 | Check | Most-used path |
 |---|---|
-| Status and URL | `Azure Portal > Container Apps > pdfval-api > Overview` |
-| Serving version | `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas` |
-| Live errors | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream` |
-| HTTP errors, CPU, memory | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics` |
-| Saved errors | `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs` |
+| Status and URL | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview` |
+| Serving version | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas` |
+| Live errors | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream` |
+| HTTP errors, CPU, memory | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics` |
+| Saved errors | `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs` |
 | Application Insights, if added | `Azure Portal > Application Insights > [confirmed resource] > Investigate > Failures` |
-| Jobs | `Azure Portal > Container App Jobs > [pdfval-worker or pdfval-maintenance] > Monitoring > Execution history` |
-| Changes | `Azure Portal > Resource groups > pdf-validation-prod > Activity log` |
-| Deployments | `Azure Portal > Resource groups > pdf-validation-prod > Settings > Deployments`; [Deploy Azure](https://github.com/ivanbueno/portal-pdf-validation/actions/workflows/deploy.yml) |
+| Jobs | `Azure Portal > Container App Jobs > [prod-pdfportal-app-caj-worker or prod-pdfportal-app-caj-maint] > Monitoring > Execution history` |
+| Changes | `Azure Portal > Resource groups > [relevant prod-pdfportal-*-rg group] > Activity log` |
+| Deployments | `Azure Portal > Subscriptions > [confirmed subscription] > Deployments`; [Deploy Azure](https://github.com/ivanbueno/portal-pdf-validation/actions/workflows/deploy.yml) |
 | Azure outage | `Azure Portal > Service Health > Service issues` |
 
 **Safe:** Read, capture sanitized evidence, retry a read/sign-in once. **Requires approval:** Any production change or restart. **Never repeat a failed restart.** Escalate with impact, UTC timeline, error/request IDs, app status, metrics, logs, deployment and actions already tried.

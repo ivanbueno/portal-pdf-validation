@@ -37,7 +37,7 @@ Trust boundaries: the Easy Auth edge, the SAS upload path (which bypasses the ap
 
 ### H1. A worker parser exploit would expose every user's documents
 
-Where: [infra/foundation.bicep](../infra/foundation.bicep) (identities), [infra/worker-access.bicep](../infra/worker-access.bicep) (scoped grants), [infra/worker-network.bicep](../infra/worker-network.bicep) (network isolation), [infra/main.bicep](../infra/main.bicep) (worker job)
+Where: [infra/admin.bicep](../infra/admin.bicep) (identities), [infra/worker-access.bicep](../infra/worker-access.bicep) (scoped grants), [infra/worker-network.bicep](../infra/worker-network.bicep) (network isolation), [infra/environments.bicep](../infra/environments.bicep) (private worker environment), [infra/app.bicep](../infra/app.bicep) (worker job)
 
 **Status: partially mitigated in the repository; parser isolation and Azure verification remain open.**
 
@@ -72,7 +72,7 @@ At review time, `Validation.Access` was accepted without `Validation.User`, and 
 
 ### M2. No quotas or rate limits (cost and availability abuse)
 
-Where: [src/portal/storage.py](../src/portal/storage.py) (`upload_url`), [src/portal/app.py](../src/portal/app.py) (`create_document`), [infra/main.bicep](../infra/main.bicep) (`maxExecutions: 4`)
+Where: [src/portal/storage.py](../src/portal/storage.py) (`upload_url`), [src/portal/app.py](../src/portal/app.py) (`create_document`), [infra/app.bicep](../infra/app.bicep) (`maxExecutions: 4`)
 
 **Status: open.** Existing request-size, PDF-size, execution-time and raw-report-size limits do not provide per-owner quotas or bound parsed report memory.
 

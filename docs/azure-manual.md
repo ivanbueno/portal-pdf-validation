@@ -12,15 +12,15 @@ The first deployment includes the separate worker identity and private environme
 
 ### 1.1 Record the approved values
 
-Use a dedicated, otherwise unused resource group. Replace example values before running commands. Keep the following nonsecret information in the deployment ticket:
+Choose environment and project tokens for a fresh deployment; see [Azure resource naming](azure-naming.md). Replace example values before running commands. Keep the following nonsecret information in the deployment ticket:
 
 | Item | Example / instructions |
 | --- | --- |
 | Azure subscription ID | Subscription GUID supplied by the Azure administrator |
 | Entra tenant ID | Directory GUID; must match the portal app registration |
-| Resource group | `pdf-validation-prod` |
+| Environment token | `prod`; 1–5 lowercase letters/digits, beginning with a letter |
 | Azure region | `westus2`; confirm Container Apps and required capacity are available in the approved region |
-| Resource prefix | `pdfval`; use 3–10 lowercase letters/numbers, with a letter first |
+| Project token | `pdfportal`; 1–10 lowercase letters/digits, beginning with a letter |
 | Portal registration name | `PDF Validation Portal` |
 | Portal application (client) ID | Obtained in section 3; not an object ID or deployment identity ID |
 | Release | Approved Git commit; its full SHA becomes the image tag |
@@ -35,27 +35,22 @@ Also record the generated registry name, storage name, portal URL, release image
 
 | Task | Required access / who handles it |
 | --- | --- |
-| Create the resource group | An Azure administrator or an operator with resource-group creation permission at subscription scope |
+| Create the four resource groups | An Azure administrator or an operator with resource-group creation permission at subscription scope |
 | Register resource providers | An administrator with provider-registration permission at subscription scope |
-| Provision resources and run ACR builds | Operator with **Contributor** on the target resource group, or equivalent custom permissions including ACR builds |
-| Create managed-identity custom roles and assignments | Operator with **User Access Administrator** on the target resource group, or equivalent role-definition and role-assignment permissions |
+| Provision resources and run ACR builds | Operator with **Contributor** at subscription scope, or the narrower permissions described below |
+| Create managed-identity custom roles and assignments | Operator with **User Access Administrator** at subscription scope, or on the precreated admin/data groups |
 | Register/configure the portal application and assign staff | An authorized Entra application administrator/owner with the required directory permissions |
 | Grant integration admin consent or configure Conditional Access | An appropriately privileged Entra administrator |
 
 Azure resource permissions and Entra directory permissions are separate. Tier 1 can have the responsible administrator complete a prerequisite and record the result before continuing.
 
-To have an Azure administrator grant the operator the resource-group roles:
+The deployment identity needs permission to create subscription deployments and resource groups, deploy into all four groups, build images in ACR, and create role definitions/assignments in admin and data. On a dedicated subscription, **Contributor** plus **User Access Administrator** at subscription scope is a straightforward bootstrap setup. For narrower access, an administrator can precreate the four groups, grant Contributor on each and User Access Administrator on admin/data, and supply a subscription-scoped custom role permitting deployment operations and resource-group reads/writes. Resource-group-only grants are insufficient for these subscription-scope entry points. Worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone is insufficient. Runtime identities retain only the resource-scoped grants declared in Bicep.
 
-1. Open [Azure portal](https://portal.azure.com) > **Resource groups** > the target group > **Access control (IAM)**.
-2. Select **Add > Add role assignment**. Choose **Contributor** and select **Next**.
-3. Under **Members**, choose **User, group, or service principal > Select members**. Select the approved operator or operations group.
-4. Select **Review + assign** to finish.
-5. Repeat for **User Access Administrator**. The administrator must ensure any assignment conditions permit the runtime roles listed in section 4.3.
-6. Confirm both assignments are at this resource group. Allow time for propagation, then sign in again if necessary.
+For the dedicated-subscription bootstrap, an administrator opens **Subscriptions > your subscription > Access control (IAM) > Add role assignment**, assigns **Contributor** and **User Access Administrator** to the approved operator, and verifies the subscription scope. Allow time for propagation before provisioning.
 
 **Checkpoint:** the subscription, region, names, access, and responsible administrators are known. These templates create a public HTTPS API and a separate worker VNet with restricted egress and private endpoints. They do not configure custom domains or API Management. Worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone is insufficient. Escalate requirements for those features before provisioning.
 
-## 2. Prepare the command session and resource group
+## 2. Prepare the command session and resource groups
 
 ### 2.1 Open the repository and tools
 
@@ -71,7 +66,7 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    git --version
    python3 --version
    curl --version
-   ls infra/foundation.bicep infra/main.bicep Dockerfile
+   ls infra/foundation.bicep infra/main.bicep infra/names.json scripts/azure_names.py Dockerfile
    git status --short
    git rev-parse HEAD
    ```
@@ -92,9 +87,13 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    ```sh
    SUBSCRIPTION_ID="YOUR_SUBSCRIPTION_ID"
    TENANT_ID="YOUR_DIRECTORY_TENANT_ID"
-   RESOURCE_GROUP="pdf-validation-prod"
+   AZURE_ENV="prod"
+   AZURE_PROJECT="pdfportal"
    LOCATION="westus2"
-   PREFIX="pdfval"
+   NAMES_FILE=$(mktemp)
+   python3 scripts/azure_names.py --env "$AZURE_ENV" --project "$AZURE_PROJECT" --format shell > "$NAMES_FILE" || exit 1
+   source "$NAMES_FILE"
+   rm -f "$NAMES_FILE"
    ALERT_EMAIL="operations@example.com"
    ```
 
@@ -109,23 +108,27 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
 
    If Cloud Shell is already signed in, still select and check the subscription. Stop if the displayed tenant/subscription differs from the ticket.
 
-### 2.3 Create the empty resource group
+### 2.3 Check the four resource-group names
 
-1. Check whether the name already exists:
+The foundation creates the groups automatically at subscription scope. Check that all four names are unused, approved empty bootstrap groups, or partial deployments of this installation:
 
-   ```sh
-   az group exists --name "$RESOURCE_GROUP"
-   ```
+```sh
+for group in "$ADMIN_RESOURCE_GROUP" "$NET_RESOURCE_GROUP" "$APP_RESOURCE_GROUP" "$DATA_RESOURCE_GROUP"; do
+  printf '%s: ' "$group"
+  az group exists --name "$group"
+done
+```
 
-2. For a fresh deployment, expect `false`, then create it:
+Expect `false` for a fresh deployment without precreated bootstrap groups. Inspect any existing group before continuing. Keep `LOCATION` fixed: it sets both the subscription deployment location and regional resource locations. These templates do not migrate resources from the old single-group layout.
 
-   ```sh
-   az group create --name "$RESOURCE_GROUP" --location "$LOCATION" \
-     --query '{name:name,location:location,state:properties.provisioningState}' --output table
-   ```
+| Resource group | Resources |
+| --- | --- |
+| `prod-pdfportal-admin-rg` | Runtime and worker managed identities, Premium Container Registry, Log Analytics, action group and alerts |
+| `prod-pdfportal-net-rg` | Worker VNet, subnets, NSG, four private endpoints and linked private DNS zones |
+| `prod-pdfportal-app-rg` | API and worker Container Apps environments, API Container App, worker and maintenance jobs, Easy Auth |
+| `prod-pdfportal-data-rg` | Storage account, Blob container, queue, table, storage role assignments and worker custom role definitions |
 
-3. If it already exists, open **Resource groups > the group > Overview** and confirm it is the approved empty bootstrap group or a partial deployment from this runbook. Do not use an unrelated occupied group or delete it to start over.
-4. Confirm the location matches the ticket. The templates default to the resource group's location. Have the administrator complete section 1.2's IAM assignments now if the group was just created.
+Azure may also create a service-managed infrastructure resource group for the VNet-integrated Container Apps environment. Azure owns that group's lifecycle; the four groups above contain the resources declared by this repository. See [Container Apps networking](https://learn.microsoft.com/en-us/azure/container-apps/custom-virtual-networks).
 
 ### 2.4 Register providers and compile templates
 
@@ -161,7 +164,7 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    az bicep build --file infra/main.bicep --outfile "$BUILD_DIR/main.json"
    ```
 
-**Checkpoint:** the correct group exists, required permissions are assigned, providers are registered, and both templates compile without errors. For any failed command, use section 9 before continuing; do not paste the remaining sections over an unresolved failure.
+**Checkpoint:** the four group names and deployment location are confirmed, required permissions are assigned, providers are registered, and both templates compile without errors. For any failed command, use section 9 before continuing; do not paste the remaining sections over an unresolved failure.
 
 ## 3. Create and configure the Entra portal/API registration
 
@@ -272,22 +275,22 @@ Use [azure-api.md](azure-api.md) for integration credentials, token requests, an
 2. From the repository root, run:
 
    ```sh
-   az deployment group create --resource-group "$RESOURCE_GROUP" --name foundation \
+   az deployment sub create --location "$LOCATION" --name "$FOUNDATION_DEPLOYMENT" \
      --template-file infra/foundation.bicep \
-     --parameters prefix="$PREFIX" portalOrigin="$ORIGIN" --output none
-   az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation \
+     --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" portalOrigin="$ORIGIN" --output none
+   az deployment sub show --name "$FOUNDATION_DEPLOYMENT" \
      --query properties.provisioningState --output tsv
    ```
 
 3. Wait for the command to complete. The state must be `Succeeded`.
-4. Retrieve generated names from the deployment outputs; do not guess the suffix:
+4. Retrieve generated names from the deployment outputs; confirm them against the naming map:
 
    ```sh
-   REGISTRY=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation \
+   REGISTRY=$(az deployment sub show --name "$FOUNDATION_DEPLOYMENT" \
      --query properties.outputs.registryName.value --output tsv)
-   STORAGE=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation \
+   STORAGE=$(az deployment sub show --name "$FOUNDATION_DEPLOYMENT" \
      --query properties.outputs.storageName.value --output tsv)
-   REGISTRY_SERVER=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation \
+   REGISTRY_SERVER=$(az deployment sub show --name "$FOUNDATION_DEPLOYMENT" \
      --query properties.outputs.registryServer.value --output tsv)
    printf 'Registry: %s\nStorage: %s\nRegistry server: %s\n' "$REGISTRY" "$STORAGE" "$REGISTRY_SERVER"
    ```
@@ -296,34 +299,34 @@ Use [azure-api.md](azure-api.md) for integration credentials, token requests, an
 
 ### 4.2 Check the resources in Azure portal
 
-Open **Resource groups > your group > Overview**, then refresh. Compare against this inventory. `<suffix>` is calculated by Bicep from the resource group ID.
+Open each group from section 2.3 and compare against this inventory. Names follow `{env}-{project}-{resource-group-type}-{resource-type}-{function-if-applicable}-{instance-num-2-digit-if-applicable}`; the examples below use `prod` and `pdfportal`. Functions distinguish resources such as the two identities and jobs. Instance numbers are omitted because each type/function has one instance. Registry/storage names omit hyphens and have no hash suffix. Identities, registry and logs are in admin; storage is in data; environments are in app; VNet, NSG, endpoints and DNS are in net. Use the [complete naming inventory](azure-naming.md) for subnet, private endpoint, DNS link, custom role and deployment names.
 
 | Resource | Expected name | Expected configuration / where to inspect |
 | --- | --- | --- |
-| User-assigned managed identity | `<prefix>-runtime` | **Overview** shows client ID and principal/object ID |
-| Worker managed identity | `<prefix>-worker` | Separate client/principal IDs; never assigned the runtime roles |
-| Container registry | `<prefix><suffix>` | Premium SKU (required for Private Link); **Access keys** shows admin user disabled |
-| Storage account | `<prefix><suffix>` | StorageV2, Standard LRS; **Configuration** has HTTPS required, minimum TLS 1.2, blob anonymous access disabled, storage account key access disabled |
+| User-assigned managed identity | `prod-pdfportal-admin-id-runtime` | **Overview** shows client ID and principal/object ID |
+| Worker managed identity | `prod-pdfportal-admin-id-worker` | Separate client/principal IDs; never assigned the runtime roles |
+| Container registry | `prodpdfportaladminacr` | Premium SKU (required for Private Link); **Access keys** shows admin user disabled |
+| Storage account | `prodpdfportaldatast` | StorageV2, Standard LRS; **Configuration** has HTTPS required, minimum TLS 1.2, blob anonymous access disabled, storage account key access disabled |
 | Blob container | `documents` in the storage account | **Data storage > Containers**; private/no anonymous access |
 | Queue | `validation` in the storage account | **Data storage > Queues** |
 | Table | `validation` in the storage account | **Storage browser > Tables** |
-| Log Analytics workspace | `<prefix>-logs` | 30-day workspace retention |
-| Container Apps environment | `<prefix>-env` | API and maintenance; Log Analytics destination is `<prefix>-logs` |
-| Worker environment/network | `<prefix>-worker-env`, `<prefix>-worker-vnet` | Internal workload-profiles environment; NSG denies unmatched outbound traffic; Blob, Queue, Table and ACR private endpoints |
+| Log Analytics workspace | `prod-pdfportal-admin-law` | 30-day workspace retention |
+| Container Apps environment | `prod-pdfportal-app-cae-shared` | API and maintenance; Log Analytics destination is `prod-pdfportal-admin-law` |
+| Worker environment/network | `prod-pdfportal-app-cae-worker`, `prod-pdfportal-net-vnet-worker` | Internal workload-profiles environment; NSG denies unmatched outbound traffic; Blob, Queue, Table and ACR private endpoints |
 
 The container, queue, and table are children of the storage account and may not appear as separate rows in the resource-group overview. The operator's management roles do not automatically allow browsing document data. If Storage browser returns a data-access error, do not enable account keys; use the deployment results and the runtime readiness check to verify provisioning, or ask the administrator for approved read access if needed.
 
 ### 4.3 Check runtime role assignments
 
 1. Open the **storage account > Access control (IAM) > Role assignments**.
-2. Filter/search for `<prefix>-runtime`. Confirm these four roles are assigned to that identity at the storage-account scope:
+2. Filter/search for `prod-pdfportal-admin-id-runtime`. Confirm these four roles are assigned to that identity at the storage-account scope:
    - **Storage Blob Data Contributor**
    - **Storage Queue Data Contributor**
    - **Storage Table Data Contributor**
    - **Storage Blob Delegator**
-3. Open the **container registry > Access control (IAM) > Role assignments** and verify **AcrPull** for `<prefix>-runtime` at the registry scope.
-4. Verify the separate `<prefix>-worker` identity has only the [worker grants](worker-isolation.md#permissions) at container/queue/table/registry scope, with no inherited broad storage grants. Its Blob assignment must carry the ABAC condition.
-5. If any are absent, inspect the `foundation` deployment error before proceeding. Bicep creates these assignments; correct deployment permissions and rerun rather than adding broader runtime roles.
+3. Open the **container registry > Access control (IAM) > Role assignments** and verify **AcrPull** for `prod-pdfportal-admin-id-runtime` at the registry scope.
+4. Verify the separate `prod-pdfportal-admin-id-worker` identity has only the [worker grants](worker-isolation.md#permissions) at container/queue/table/registry scope, with no inherited broad storage grants. Its Blob assignment must carry the ABAC condition.
+5. If any are absent, inspect the `$FOUNDATION_DEPLOYMENT` deployment error before proceeding. Bicep creates these assignments; correct deployment permissions and rerun rather than adding broader runtime roles.
 
 ### 4.4 Build and verify the release image
 
@@ -332,7 +335,7 @@ The container, queue, and table are children of the storage account and may not 
    ```sh
    git status --short
    IMAGE_TAG=$(git rev-parse HEAD)
-   az acr build --registry "$REGISTRY" --image "pdf-validation:$IMAGE_TAG" .
+   az acr build --resource-group "$ADMIN_RESOURCE_GROUP" --registry "$REGISTRY" --image "pdf-validation:$IMAGE_TAG" .
    ```
 
 2. Wait for the remote build to succeed. Record the ACR build/run ID from its output.
@@ -375,9 +378,9 @@ The following block prompts without echoing the secret, stores it in a permissio
    with open(sys.argv[1], 'w') as output:
        json.dump({'entraClientSecret': {'value': secret}}, output)
    PY
-     az deployment group create --resource-group "$RESOURCE_GROUP" --name portal \
+     az deployment sub create --location "$LOCATION" --name "$PORTAL_DEPLOYMENT" \
        --template-file infra/main.bicep \
-       --parameters prefix="$PREFIX" imageTag="$IMAGE_TAG" tenantId="$TENANT_ID" \
+       --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" imageTag="$IMAGE_TAG" tenantId="$TENANT_ID" \
        apiClientId="$API_CLIENT_ID" alertEmail="$ALERT_EMAIL" portalOrigin="$ORIGIN" \
        "@$SECRET_PARAMS" --output none
    )
@@ -388,9 +391,9 @@ The following block prompts without echoing the secret, stores it in a permissio
 5. Verify the state and obtain the new URL:
 
    ```sh
-   az deployment group show --resource-group "$RESOURCE_GROUP" --name portal \
+   az deployment sub show --name "$PORTAL_DEPLOYMENT" \
      --query properties.provisioningState --output tsv
-   ORIGIN=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name portal \
+   ORIGIN=$(az deployment sub show --name "$PORTAL_DEPLOYMENT" \
      --query properties.outputs.portalUrl.value --output tsv)
    printf 'Portal origin: %s\nWeb callback: %s/.auth/login/aad/callback\n' "$ORIGIN" "$ORIGIN"
    ```
@@ -399,27 +402,27 @@ The following block prompts without echoing the secret, stores it in a permissio
 
 ### 5.2 Verify application resources
 
-In **Resource groups > your group > Overview**, confirm the following additional resources. The template also redeploys the foundation, which is why every application deployment must receive the correct `portalOrigin`.
+In **Resource groups**, inspect app for the API and jobs, and admin for the action group and alerts. Confirm the following additional resources. The template also redeploys the foundation, which is why every application deployment must receive the correct `portalOrigin`.
 
 | Resource | Expected configuration |
 | --- | --- |
-| `<prefix>-api` Container App | External ingress, HTTPS required, target port 8000, single active revision; image tag from section 4.4; 0.5 vCPU / 1 GiB; 1–3 replicas |
-| `<prefix>-worker` Container Apps job | Event trigger on storage queue `validation`; `pdf-worker` command; 2 vCPU / 4 GiB; 900-second timeout; 0–4 executions, 10-second polling, no platform retries |
-| `<prefix>-maintenance` Container Apps job | Schedule `*/2 * * * *` (every two minutes, UTC); `pdf-maintenance` command; 0.5 vCPU / 1 GiB; 600-second timeout; one platform retry |
-| `<prefix>-alerts` action group | Email receiver matches `$ALERT_EMAIL`, or empty if intentionally omitted |
-| `<prefix>-processing-failures` alert | Processing/maintenance log errors, severity 2, evaluated every 5 minutes over a 15-minute window |
-| `<prefix>-queue-backlog` alert | Queue message count average above 1,000 over a one-hour window, evaluated every 5 minutes |
-| `<prefix>-worker-failed` and `<prefix>-maintenance-failed` alerts | Failed job executions, severity 2, five-minute window |
+| `prod-pdfportal-app-ca-api` Container App | External ingress, HTTPS required, target port 8000, single active revision; image tag from section 4.4; 0.5 vCPU / 1 GiB; 1–3 replicas |
+| `prod-pdfportal-app-caj-worker` Container Apps job | Event trigger on storage queue `validation`; `pdf-worker` command; 2 vCPU / 4 GiB; 900-second timeout; 0–4 executions, 10-second polling, no platform retries |
+| `prod-pdfportal-app-caj-maint` Container Apps job | Schedule `*/2 * * * *` (every two minutes, UTC); `pdf-maintenance` command; 0.5 vCPU / 1 GiB; 600-second timeout; one platform retry |
+| `prod-pdfportal-admin-ag` action group | Email receiver matches `$ALERT_EMAIL`, or empty if intentionally omitted |
+| `prod-pdfportal-admin-sqr-processing` alert | Processing/maintenance log errors, severity 2, evaluated every 5 minutes over a 15-minute window |
+| `prod-pdfportal-admin-ma-backlog` alert | Queue message count average above 1,000 over a one-hour window, evaluated every 5 minutes |
+| `prod-pdfportal-admin-ma-worker` and `prod-pdfportal-admin-ma-maint` alerts | Failed job executions, severity 2, five-minute window |
 
-Open each app/job's **Identity** and registry/container settings: API and maintenance use `<prefix>-runtime`; worker, its image pull and its scaler use only `<prefix>-worker`. All use the same release image. Worker must run in `<prefix>-worker-env`. For the API, confirm environment variables `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, the expected `PDF_TENANT_ID`, `PDF_AUDIENCE` (client ID), `PDF_STORAGE_ACCOUNT`, and `AZURE_CLIENT_ID` (runtime identity client ID). The jobs share the application settings, but the worker's `AZURE_CLIENT_ID` must be the worker identity's client ID.
+Open each app/job's **Identity** and registry/container settings: API and maintenance use `prod-pdfportal-admin-id-runtime`; worker, its image pull and its scaler use only `prod-pdfportal-admin-id-worker`. All use the same release image. Worker must run in `prod-pdfportal-app-cae-worker`. For the API, confirm environment variables `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, the expected `PDF_TENANT_ID`, `PDF_AUDIENCE` (client ID), `PDF_STORAGE_ACCOUNT`, and `AZURE_CLIENT_ID` (runtime identity client ID). The jobs share the application settings, but the worker's `AZURE_CLIENT_ID` must be the worker identity's client ID.
 
 ### 5.3 Check Easy Auth configuration
 
-1. Open `<prefix>-api` > **Security > Authentication**. Verify authentication is enabled with Microsoft as the identity provider and the existing portal registration selected. Do not create another registration from this screen.
+1. Open `prod-pdfportal-app-ca-api` > **Security > Authentication**. Verify authentication is enabled with Microsoft as the identity provider and the existing portal registration selected. Do not create another registration from this screen.
 2. Inspect the full configuration if needed with this read-only command from the [Container Apps authentication CLI](https://learn.microsoft.com/en-us/cli/azure/containerapp/auth?view=azure-cli-latest):
 
    ```sh
-   az containerapp auth show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" --output json
+   az containerapp auth show --resource-group "$APP_RESOURCE_GROUP" --name "$API_NAME" --output json
    ```
 
 3. Compare it with the template:
@@ -461,10 +464,10 @@ The token store is not enabled by the template. Protected routes include `/api/s
 2. Redeploy the foundation with it:
 
    ```sh
-   az deployment group create --resource-group "$RESOURCE_GROUP" --name foundation \
+   az deployment sub create --location "$LOCATION" --name "$FOUNDATION_DEPLOYMENT" \
      --template-file infra/foundation.bicep \
-     --parameters prefix="$PREFIX" portalOrigin="$ORIGIN" --output none
-   az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation \
+     --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" portalOrigin="$ORIGIN" --output none
+   az deployment sub show --name "$FOUNDATION_DEPLOYMENT" \
      --query properties.provisioningState --output tsv
    ```
 
@@ -561,19 +564,19 @@ Cookie-authenticated changes require `X-Requested-With: PDFValidationPortal`, wh
 
 ### 7.4 Check jobs, logs, and alert delivery
 
-1. In Azure portal, open `<prefix>-worker` > **Execution history**. Confirm executions occurred for the test uploads and inspect any failures.
-2. Open `<prefix>-maintenance` > **Execution history**. Wait for at least one scheduled execution (every two minutes) and confirm it succeeds.
+1. In Azure portal, open `prod-pdfportal-app-caj-worker` > **Execution history**. Confirm executions occurred for the test uploads and inspect any failures.
+2. Open `prod-pdfportal-app-caj-maint` > **Execution history**. Wait for at least one scheduled execution (every two minutes) and confirm it succeeds.
 3. The equivalent read-only checks are:
 
    ```sh
-   az containerapp job execution list --resource-group "$RESOURCE_GROUP" \
-     --name "$PREFIX-worker" --output table
-   az containerapp job execution list --resource-group "$RESOURCE_GROUP" \
-     --name "$PREFIX-maintenance" --output table
+   az containerapp job execution list --resource-group "$APP_RESOURCE_GROUP" \
+     --name "$WORKER_NAME" --output table
+   az containerapp job execution list --resource-group "$APP_RESOURCE_GROUP" \
+     --name "$MAINTENANCE_NAME" --output table
    ```
 
    An empty worker history before any upload is normal. A platform-successful execution does not alone prove the PDF passed: also check the portal result. See the [job execution CLI reference](https://learn.microsoft.com/en-us/cli/azure/containerapp/job/execution?view=azure-cli-latest).
-4. Open `<prefix>-logs` > **Logs** and run:
+4. Open `prod-pdfportal-admin-law` > **Logs** and run:
 
    ```kusto
    ContainerAppConsoleLogs_CL
@@ -584,8 +587,8 @@ Cookie-authenticated changes require `X-Requested-With: PDFValidationPortal`, wh
    ```
 
    Allow for ingestion delay. Look for recent application activity and `maintenance_finished` events with `failures` equal to `0`. Logs should contain IDs/outcomes rather than document content, original filenames, tokens, principal headers, or signed URLs.
-5. Open **Azure Monitor > Alerts > Alert rules**, filter to the resource group, and confirm all four alert rules from section 5.2 are enabled and linked to `<prefix>-alerts`.
-6. If email is configured, open **Azure Monitor > Alerts > Action groups > <prefix>-alerts > Test**. Select a test notification type and the email receiver, send the test, and confirm the operations recipient receives it. Record the result. This checks delivery; it does not prove each alert condition will fire. See Microsoft's [action group testing instructions](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups#test-an-action-group-in-the-azure-portal).
+5. Open **Azure Monitor > Alerts > Alert rules**, filter to the admin resource group, and confirm all four alert rules from section 5.2 are enabled and linked to `prod-pdfportal-admin-ag`.
+6. If email is configured, open **Azure Monitor > Alerts > Action groups > prod-pdfportal-admin-ag > Test**. Select a test notification type and the email receiver, send the test, and confirm the operations recipient receives it. Record the result. This checks delivery; it does not prove each alert condition will fire. See Microsoft's [action group testing instructions](https://learn.microsoft.com/en-us/azure/azure-monitor/alerts/action-groups#test-an-action-group-in-the-azure-portal).
 
 **Checkpoint:** all required checks pass. Track recovery, representative multi-file load, retention, session-policy, and deeper security tests with the application/identity owner where Tier 1 cannot execute them. Do not mark an unperformed check as passed. Azure's real cookie flow, header sanitization, and token validation cannot be proven by local tests.
 
@@ -593,8 +596,8 @@ Cookie-authenticated changes require `X-Requested-With: PDFValidationPortal`, wh
 
 Attach this checklist to the deployment ticket:
 
-- [ ] Subscription/tenant, resource group, region, prefix, portal registration client ID, and resource names recorded.
-- [ ] Approved Git commit, image tag/digest, ACR build ID, and successful deployment names (`foundation`, `portal`) recorded.
+- [ ] Subscription/tenant, all four resource groups, region, environment/project, portal registration client ID, and resource names recorded.
+- [ ] Approved Git commit, image tag/digest, ACR build ID, and successful deployment names (`$FOUNDATION_DEPLOYMENT`, `$PORTAL_DEPLOYMENT`) recorded.
 - [ ] Portal URL and exact Web callback recorded; Blob CORS matches.
 - [ ] Runtime and worker identity assignments, worker network isolation, and Easy Auth configuration verified.
 - [ ] Assigned/unassigned sign-in, anonymous rejection, upload, reports, ownership, and deletion checks recorded.
@@ -613,28 +616,28 @@ Easy Auth must remain the sole public authentication boundary. Do not expose por
 
 ### 9.1 Inspect a failed deployment
 
-1. In Azure portal, open **Resource groups > your group > Deployments**.
-2. Open `foundation` or `portal`, select the failed operation, and record its error code, resource name, timestamp, and correlation ID. For a failed nested `foundation` deployment, open that deployment's operation details too.
+1. In Azure portal, open **Subscriptions > your subscription > Deployments**. Follow nested module failures into the relevant resource group’s **Deployments** view.
+2. Open `prod-pdfportal-admin-deploy-foundation` or `prod-pdfportal-app-deploy-portal`, select the failed operation, and record its error code, resource name, timestamp, and correlation ID. For a failed nested foundation deployment, open that deployment's operation details too.
 3. Read the same information from the CLI if needed:
 
    ```sh
-   DEPLOYMENT_NAME="portal"  # Use foundation when that deployment failed.
-   az deployment operation group list --resource-group "$RESOURCE_GROUP" --name "$DEPLOYMENT_NAME" \
+   DEPLOYMENT_NAME="$PORTAL_DEPLOYMENT"  # Use $FOUNDATION_DEPLOYMENT for foundation failures.
+   az deployment operation sub list --name "$DEPLOYMENT_NAME" \
      --query "[?properties.provisioningState=='Failed'].{resource:properties.targetResource.resourceName,error:properties.statusMessage}" \
      --output json
    ```
 
-4. Resolve the specific error, then rerun the failed stage with the same group/prefix and verified parameters. These are incremental deployments; do not delete resources to retry.
+4. Resolve the specific error, then rerun the failed stage with the same environment/project and verified parameters. These are incremental deployments; do not delete resources to retry.
 
 | Symptom | Tier 1 checks / next action |
 | --- | --- |
-| `AuthorizationFailed` on resource creation or ACR build | Confirm `az account show` and operator Contributor/custom permissions at the target group. Ask Azure administrator to fix the missing action/scope. |
-| Role-assignment failure | Verify Role Based Access Control Administrator and any assignment conditions. Allow propagation before retrying foundation. |
+| `AuthorizationFailed` on resource creation or ACR build | Confirm `az account show` and operator Contributor/custom permissions at subscription and target group scopes. Ask Azure administrator to fix the missing action/scope. |
+| Role-assignment failure | Verify User Access Administrator/custom role-definition and assignment permissions in admin/data and any assignment conditions. Allow propagation before retrying foundation. |
 | Provider not registered | Repeat section 2.4 for the named provider using a subscription-authorized account. |
 | Policy denial, quota, or region capacity failure | Record the policy/quota/resource error and escalate to the Azure administrator. Do not switch subscriptions/regions or relax policy independently. |
-| Registry/storage name conflict | Check whether the approved prefix/group were already used. Escalate before changing names; a different prefix creates a different resource set. |
+| Registry/storage name conflict | Check whether the approved environment/project were already used. Escalate before changing names; a different project token creates a different resource set. |
 | ACR build fails | Read the failing build step. Confirm clean checkout and approved source. Dependency download/build errors go to the release owner; do not deploy a missing image tag. |
-| Image pull failure / revision not ready | Confirm the image exists and the registry identity has AcrPull: `<prefix>-runtime` for API/maintenance, `<prefix>-worker` for the worker. For worker pulls, also check ACR private endpoint approval and private DNS. Check the app/job system logs; retry after role propagation if appropriate. Do not enable registry admin credentials. |
+| Image pull failure / revision not ready | Confirm the image exists and the registry identity has AcrPull: `prod-pdfportal-admin-id-runtime` for API/maintenance, `prod-pdfportal-admin-id-worker` for the worker. For worker pulls, also check ACR private endpoint approval and private DNS. Check the app/job system logs; retry after role propagation if appropriate. Do not enable registry admin credentials. |
 | `/health/ready` returns 503 | Verify storage names, all four runtime data roles, identity client ID, and storage connectivity. Check app logs. Do not introduce account keys as a workaround. |
 | `AADSTS50011` / redirect mismatch | Compare the exact hostname and `/.auth/login/aad/callback` path with the registration's Web redirect URI. Save the corrected URI and retry a private session. |
 | Sign-in reports `id_token` response type is not enabled | Check the ID tokens setting in section 6.1 and save it. |
@@ -648,9 +651,9 @@ Easy Auth must remain the sole public authentication boundary. Do not expose por
 For API/system logs during an incident:
 
 ```sh
-az containerapp logs show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" \
+az containerapp logs show --resource-group "$APP_RESOURCE_GROUP" --name "$API_NAME" \
   --type system --tail 50
-az containerapp logs show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" \
+az containerapp logs show --resource-group "$APP_RESOURCE_GROUP" --name "$API_NAME" \
   --type console --tail 50
 ```
 
@@ -664,7 +667,7 @@ Share only relevant, redacted diagnostics with the responsible administrator. Ne
 4. If the app already exists, recover its origin:
 
    ```sh
-   FQDN=$(az containerapp show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" \
+   FQDN=$(az containerapp show --resource-group "$APP_RESOURCE_GROUP" --name "$API_NAME" \
      --query properties.configuration.ingress.fqdn --output tsv)
    if [ -n "$FQDN" ]; then
      ORIGIN="https://$FQDN"
@@ -696,11 +699,11 @@ Share only relevant, redacted diagnostics with the responsible administrator. Ne
 ### 10.3 Roll back a release
 
 1. Have the release owner identify the previous compatible image tag and matching infrastructure/auth configuration. Confirm storage/schema and in-flight job compatibility before proceeding.
-2. Verify that image still exists in ACR. Use the matching approved templates, keep the same resource group/prefix and actual portal origin, and set `IMAGE_TAG` to the rollback tag.
+2. Verify that image still exists in ACR. Use the matching approved templates, keep the same environment/project and actual portal origin, and set `IMAGE_TAG` to the rollback tag.
 3. Repeat section 5 with a **currently valid** Easy Auth secret. An expired old secret is not part of rollback.
 4. Verify CORS, health, sign-in, upload/results, and both jobs using sections 6–7. Existing running job executions can still use the earlier image until they finish; check execution history before declaring recovery.
-5. Record the restored image and incident outcome. Do not disable Easy Auth or delete the resource group as a rollback method.
+5. Record the restored image and incident outcome. Do not disable Easy Auth or delete the resource groups as a rollback method.
 
 ### 10.4 Optional: move future deployments to GitHub Actions
 
-Follow [azure-ci.md](azure-ci.md) for the dedicated deployment service principal, GitHub OIDC trust, and `production` environment setup. Reuse this resource group, prefix, portal registration, and Easy Auth secret; do not create a second portal registration. Configure the workflow's variables from the recorded deployment values and store the Easy Auth secret as `ENTRA_CLIENT_SECRET`. Deployment authentication uses OIDC, not that secret. Choose one release owner/process so manual and workflow deployments do not run concurrently.
+Follow [azure-ci.md](azure-ci.md) for the dedicated deployment service principal, GitHub OIDC trust, and `production` environment setup. Reuse these four resource groups, region, environment/project, portal registration, and Easy Auth secret; do not create a second portal registration. Configure the workflow's variables from the recorded deployment values and store the Easy Auth secret as `ENTRA_CLIENT_SECRET`. Deployment authentication uses OIDC, not that secret. Choose one release owner/process so manual and workflow deployments do not run concurrently.

@@ -28,7 +28,7 @@ Yes. The portal itself uses the same versioned API that approved integrations ca
 <details>
 <summary><b>What does it take to deploy?</b></summary>
 
-An Azure subscription and Entra ID. A GitHub Actions workflow provisions Azure Container Apps, Storage and monitoring, then deploys. Creating this project provisions nothing by itself. [Azure resources →](docs/how-it-works.md#azure-resources) · [Deploy to Azure →](docs/azure-ci.md)
+An Azure subscription and Entra ID. A GitHub Actions workflow creates separate admin, net, app and data resource groups, provisions Azure Container Apps, Storage and monitoring, then deploys. Creating this project provisions nothing by itself. [Azure resources →](docs/how-it-works.md#azure-resources) · [Deploy to Azure →](docs/azure-ci.md) · [Resource names →](docs/azure-naming.md)
 </details>
 
 ## Go deeper

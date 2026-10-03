@@ -6,22 +6,26 @@ Use this runbook to investigate incidents escalated by Tier 1, operate the Azure
 
 This document describes procedures; it does not authorize production changes. Commands marked **Safe to check** read existing resources. Commands marked **Use caution** require the organization's change or incident approval. Do not run every code block as one script.
 
+For a fresh deployment, confirm the portal URL from the **Deploy Azure** run summary and record the four group names before using this runbook. Replace every `REPLACE_WITH_PORTAL_HOSTNAME` placeholder below with that deployment’s actual hostname. Parent deployment history is at subscription scope; nested module history is in each resource group.
+
+Resource names below use `env=prod` and `project=pdfportal`. Functions distinguish purpose; instance numbers are omitted for the current single instances. If deployment tokens differ, render names with [`scripts/azure_names.py`](../scripts/azure_names.py) and update the production reference. See [Azure naming](azure-naming.md) for token limits and naming exceptions.
+
 ## 1. Production Reference and Evidence
 
 | Item | Value |
 |---|---|
 | Application | PDF Validation Portal |
-| Production URL | [Open the portal](https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io) |
+| Production URL | [Open the portal](https://REPLACE_WITH_PORTAL_HOSTNAME) |
 | Repository | [ivanbueno/portal-pdf-validation](https://github.com/ivanbueno/portal-pdf-validation) |
-| Resource group | `pdf-validation-prod` |
-| Container App | `pdfval-api` |
-| Container Apps environment | `pdfval-env` |
-| Jobs | `pdfval-worker`, `pdfval-maintenance` |
-| Runtime managed identity | `pdfval-runtime` |
-| Log Analytics workspace | `pdfval-logs` |
+| Resource groups | `prod-pdfportal-admin-rg`, `prod-pdfportal-net-rg`, `prod-pdfportal-app-rg`, `prod-pdfportal-data-rg` |
+| Container App | `prod-pdfportal-app-ca-api` |
+| Container Apps environment | `prod-pdfportal-app-cae-shared` |
+| Jobs | `prod-pdfportal-app-caj-worker`, `prod-pdfportal-app-caj-maint` |
+| Runtime managed identity | `prod-pdfportal-admin-id-runtime` |
+| Log Analytics workspace | `prod-pdfportal-admin-law` |
 | GitHub deployment environment | `production` |
-| Region | Hostname identifies `westus2`; confirm resource location before an operation. |
-| Storage account and registry | Names are generated from prefix `pdfval` and a resource-group hash. Confirm through Section 5 inventory before use. |
+| Region | Use the deployed `AZURE_LOCATION`; confirm on the resource's Overview page before an operation. |
+| Storage account and registry | Default names are `prodpdfportaldatast` and `prodpdfportaladminacr`; see [Azure naming](azure-naming.md). Confirm through Section 5 inventory before use. |
 | Subscription, directory and Entra application IDs | **TBD: Confirm with application owner** |
 | Staging subscription/resource group and URL | **TBD: Confirm with application owner**. No staging deployment is defined in the reviewed workflow. |
 | Application owner, DevOps on-call, incident lead | **TBD: Confirm with application owner** |
@@ -35,7 +39,8 @@ This document describes procedures; it does not authorize production changes. Co
 
 | Question | Source |
 |---|---|
-| What should Azure run? | [Application infrastructure](../infra/main.bicep), [foundation infrastructure](../infra/foundation.bicep) |
+| What should Azure run? | [Subscription entry point](../infra/main.bicep), [foundation entry point](../infra/foundation.bicep), [module responsibilities](azure-container-apps-architecture.md#template-ownership) |
+| How are resource names built? | [Shared suffix map](../infra/names.json), [name helper](../scripts/azure_names.py), [naming inventory](azure-naming.md) |
 | How is it released? | [Deploy workflow](../.github/workflows/deploy.yml), [deployment guide](azure-ci.md) |
 | What tests should pass? | [Verify workflow](../.github/workflows/ci.yml), [development guide](development.md) |
 | How do requests and errors work? | [API handlers](../src/portal/app.py), [API guide](api.md) |
@@ -77,14 +82,14 @@ These are repository defaults, not measurements or approved performance targets.
 
 | Component | Expected configuration | Failure impact |
 |---|---|---|
-| API `pdfval-api` | Container `api`; port 8000; external HTTPS only; single active revision; 0.5 CPU, 1 GiB per replica; 1 to 3 replicas; HTTP scaling at 30 concurrent requests per replica. | Website, API and access to results can fail. |
-| Worker `pdfval-worker` | Event job; command `pdf-worker`; one message per execution; 2 CPU, 4 GiB; maximum 4 concurrent executions; poll every 10 seconds; 900-second execution timeout; no platform retry. | PDFs queue or fail processing while the website may stay available. |
-| Maintenance `pdfval-maintenance` | Scheduled job; command `pdf-maintenance`; every 2 minutes; 0.5 CPU, 1 GiB; 600-second execution timeout; one platform retry. | Queue dispatch recovery, expired-lease recovery and physical cleanup can fall behind. |
+| API `prod-pdfportal-app-ca-api` | Container `api`; port 8000; external HTTPS only; single active revision; 0.5 CPU, 1 GiB per replica; 1 to 3 replicas; HTTP scaling at 30 concurrent requests per replica. | Website, API and access to results can fail. |
+| Worker `prod-pdfportal-app-caj-worker` | Event job; command `pdf-worker`; one message per execution; 2 CPU, 4 GiB; maximum 4 concurrent executions; poll every 10 seconds; 900-second execution timeout; no platform retry. | PDFs queue or fail processing while the website may stay available. |
+| Maintenance `prod-pdfportal-app-caj-maint` | Scheduled job; command `pdf-maintenance`; every 2 minutes; 0.5 CPU, 1 GiB; 600-second execution timeout; one platform retry. | Queue dispatch recovery, expired-lease recovery and physical cleanup can fall behind. |
 | Blob Storage | Private `documents` container; stores input, pinned input snapshots and reports. | Upload, validation input, PDF viewing and report downloads fail. |
 | Table Storage | `validation` table; ownership, lifecycle and report references. | Listing, submission, authorization-by-ownership and progress tracking fail. |
 | Queue Storage | `validation` queue; messages identify owner and document. | New validation work may not start. |
 | Registry | Premium tier; worker pulls through Private Link with its own identity; API/maintenance use runtime identity; admin login disabled. | New replicas or executions may fail to start while existing ones still run. |
-| Log Analytics | `pdfval-logs`, 30-day retention. | Missing logs reduce visibility; this alone does not prove an application outage. |
+| Log Analytics | `prod-pdfportal-admin-law`, 30-day retention. | Missing logs reduce visibility; this alone does not prove an application outage. |
 
 ### Document lifecycle and automatic recovery
 
@@ -118,9 +123,9 @@ These are repository defaults, not measurements or approved performance targets.
 
 | Identity | Purpose | Where to inspect it |
 |---|---|---|
-| GitHub deployment identity | Authenticates the release workflow to Azure using OpenID Connect, a short-lived trust exchange. Creates resources and role assignments. | `Azure Portal > Microsoft Entra ID > App registrations > [confirmed deployment registration] > Certificates & secrets > Federated credentials`; `Azure Portal > Resource groups > pdf-validation-prod > Access control (IAM) > Role assignments` |
-| Runtime identity `pdfval-runtime` | Lets the API and maintenance job access Storage and pull images. | `Azure Portal > Managed Identities > pdfval-runtime > Overview`; `Azure Portal > Container Apps > pdfval-api > Settings > Identity` |
-| Worker identity `pdfval-worker` | Snapshot reads, report writes, queue consumption and table state updates; separate worker VNet/environment. | `Azure Portal > Container App Jobs > pdfval-worker > Settings > Identity` |
+| GitHub deployment identity | Authenticates the release workflow to Azure using OpenID Connect, a short-lived trust exchange. Creates resources and role assignments. | `Azure Portal > Microsoft Entra ID > App registrations > [confirmed deployment registration] > Certificates & secrets > Federated credentials`; `Azure Portal > Subscriptions > [confirmed subscription] > Access control (IAM) > Role assignments; also inspect IAM on the four resource groups` |
+| Runtime identity `prod-pdfportal-admin-id-runtime` | Lets the API and maintenance job access Storage and pull images. | `Azure Portal > Managed Identities > prod-pdfportal-admin-id-runtime > Overview`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Identity` |
+| Worker identity `prod-pdfportal-admin-id-worker` | Snapshot reads, report writes, queue consumption and table state updates; separate worker VNet/environment. | `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Settings > Identity` |
 | Portal/API Entra registration | Defines browser sign-in, API audience, roles, delegated scope and the Easy Auth credential. | `Azure Portal > Microsoft Entra ID > App registrations > [confirmed portal registration] > Overview`; assignments: `Azure Portal > Microsoft Entra ID > Enterprise applications > [confirmed portal enterprise application] > Users and groups` |
 
 The deployment trust expects issuer `https://token.actions.githubusercontent.com`, subject `repo:ivanbueno/portal-pdf-validation:environment:production`, and audience `api://AzureADTokenExchange`. Compare these exactly when `azure/login` fails. The deployment client ID and portal/API client ID are different values.
@@ -147,7 +152,7 @@ Use [the application's authorization source](../src/portal/auth.py) and [Microso
 
 | Location | Settings to recognize | Rule |
 |---|---|---|
-| GitHub `Settings > Environments > production > Environment variables` | `AZURE_RESOURCE_GROUP`, `AZURE_PREFIX`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_DEPLOY_CLIENT_ID`, `API_CLIENT_ID`, `ALERT_EMAIL` | Inspect names and approved non-secret values. Do not change targets during troubleshooting. |
+| GitHub `Settings > Environments > production > Environment variables` | `AZURE_ENV`, `AZURE_PROJECT`, `AZURE_LOCATION`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_DEPLOY_CLIENT_ID`, `API_CLIENT_ID`, `ALERT_EMAIL` | Inspect names and approved non-secret values. Do not change targets during troubleshooting. |
 | GitHub `Settings > Environments > production > Environment secrets` | `ENTRA_CLIENT_SECRET` | Secret for portal Easy Auth, not GitHub's deployment login. Never print it. |
 | Container App environment variables | `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, `PDF_STORAGE_ACCOUNT`, `PDF_TENANT_ID`, `PDF_AUDIENCE`, `AZURE_CLIENT_ID` | Defined in Bicep; worker uses its own `AZURE_CLIENT_ID`. Compare only relevant non-secret settings. |
 | Container App secret | `entra-client-secret` | Used by the platform's authentication configuration. Do not dump secret values or put them in shell history. |
@@ -180,21 +185,27 @@ Use [the application's authorization source](../src/portal/auth.py) and [Microso
 | Documents stay running | Slow profile, worker crash or lease recovery | Start time, lease, job termination and maintenance progress. |
 | Results exist but pages/reports fail | Ownership, expiry, Blob reads or application defect | Request ID, document state and affected route. |
 
-Portal paths: `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas`; `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream`; `Azure Portal > Service Health > Service issues`. Some portal versions call the revision page `Revision management` or the service issue page `Incidents`. Use the resource menu's search if a label differs. Stop if the resource cannot be identified confidently.
+Portal paths: `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas`; `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream`; `Azure Portal > Service Health > Service issues`. Some portal versions call the revision page `Revision management` or the service issue page `Incidents`. Use the resource menu's search if a label differs. Stop if the resource cannot be identified confidently.
 
 ## 5. Read-Only Diagnostic Toolkit
 
 ### 5.1 Confirm the target before using Azure CLI
 
-**Safe to check.** Use an approved workstation with Azure CLI and GitHub CLI already configured. The examples use Bash-compatible syntax. Replace placeholder values before use. Do not enable command tracing (`set -x`) or `--debug` while handling authenticated requests.
+**Safe to check.** Use an approved workstation with Azure CLI and GitHub CLI already configured. Run the name helper with Python 3 from the root of the approved release checkout. The examples use Bash-compatible syntax. Replace placeholder values before use. Do not enable command tracing (`set -x`) or `--debug` while handling authenticated requests.
 
 ```sh
 az account show --query '{subscription:name,id:id,tenant:tenantId}' --output table
 gh auth status
 
 RUNBOOK_SUBSCRIPTION='REPLACE_WITH_OWNER_CONFIRMED_SUBSCRIPTION_ID'
-RUNBOOK_RG='pdf-validation-prod'
-RUNBOOK_APP='pdfval-api'
+RUNBOOK_ENV='prod'
+RUNBOOK_PROJECT='pdfportal'
+RUNBOOK_NAMES_FILE=$(mktemp)
+python3 scripts/azure_names.py --env "$RUNBOOK_ENV" --project "$RUNBOOK_PROJECT" --format shell > "$RUNBOOK_NAMES_FILE" || exit 1
+source "$RUNBOOK_NAMES_FILE"
+rm -f "$RUNBOOK_NAMES_FILE"
+RUNBOOK_RG="$APP_RESOURCE_GROUP"
+RUNBOOK_APP="$API_NAME"
 RUNBOOK_REPO='ivanbueno/portal-pdf-validation'
 ```
 
@@ -203,9 +214,11 @@ Compare the account output with the owner-confirmed subscription and directory. 
 ### 5.2 Inventory and serving revision
 
 ```sh
-az resource list --subscription "$RUNBOOK_SUBSCRIPTION" \
-  --resource-group "$RUNBOOK_RG" \
-  --query '[].{name:name,type:type,location:location}' --output table
+for RUNBOOK_GROUP in "$ADMIN_RESOURCE_GROUP" "$NET_RESOURCE_GROUP" "$APP_RESOURCE_GROUP" "$DATA_RESOURCE_GROUP"; do
+  az resource list --subscription "$RUNBOOK_SUBSCRIPTION" \
+    --resource-group "$RUNBOOK_GROUP" \
+    --query '[].{group:resourceGroup,name:name,type:type,location:location}' --output table
+done
 
 az containerapp show --subscription "$RUNBOOK_SUBSCRIPTION" \
   --resource-group "$RUNBOOK_RG" --name "$RUNBOOK_APP" \
@@ -220,14 +233,14 @@ az containerapp revision list --subscription "$RUNBOOK_SUBSCRIPTION" \
 
 Expected template state is Single revision mode with ready API replicas. An attempted deployment can leave the older revision serving while a newer one fails. Confirm the traffic and health together. If CLI fields are missing, use the Portal rather than assuming a missing value means healthy. See [Container Apps CLI](https://learn.microsoft.com/en-us/cli/azure/containerapp?view=azure-cli-latest) and [revision behavior](https://learn.microsoft.com/en-us/azure/container-apps/revisions).
 
-Find the storage account and registry in the inventory. Cross-check the account against `Azure Portal > Container Apps > pdfval-api > Application > Containers > api > Environment variables > PDF_STORAGE_ACCOUNT`. Do not select Edit or Save while reading.
+Find the storage account and registry in the inventory. Cross-check the account against `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Containers > api > Environment variables > PDF_STORAGE_ACCOUNT`. Do not select Edit or Save while reading.
 
 ### 5.3 Health and anonymous access
 
 Use the owner-confirmed Application URL. These requests send no tokens and make no application data changes.
 
 ```sh
-RUNBOOK_ORIGIN='https://pdfval-api.calmocean-f7286a46.westus2.azurecontainerapps.io'
+RUNBOOK_ORIGIN='https://REPLACE_WITH_PORTAL_HOSTNAME'
 curl --silent --show-error --connect-timeout 5 --max-time 20 \
   --write-out '\nHTTP %{http_code}; total %{time_total}s\n' "$RUNBOOK_ORIGIN/health/live"
 curl --silent --show-error --connect-timeout 5 --max-time 20 \
@@ -243,20 +256,20 @@ Expect liveness 200 with `status: ok`, readiness 200 with `status: ready`, and a
 
 ```sh
 az containerapp job execution list --subscription "$RUNBOOK_SUBSCRIPTION" \
-  --resource-group "$RUNBOOK_RG" --name pdfval-worker \
+  --resource-group "$RUNBOOK_RG" --name "$WORKER_NAME" \
   --query '[].{name:name,status:properties.status,start:properties.startTime,end:properties.endTime}' \
   --output table
 az containerapp job execution list --subscription "$RUNBOOK_SUBSCRIPTION" \
-  --resource-group "$RUNBOOK_RG" --name pdfval-maintenance \
+  --resource-group "$RUNBOOK_RG" --name "$MAINTENANCE_NAME" \
   --query '[].{name:name,status:properties.status,start:properties.startTime,end:properties.endTime}' \
   --output table
 az containerapp job show --subscription "$RUNBOOK_SUBSCRIPTION" \
-  --resource-group "$RUNBOOK_RG" --name pdfval-worker \
+  --resource-group "$RUNBOOK_RG" --name "$WORKER_NAME" \
   --query '{images:properties.template.containers[].image,trigger:properties.configuration.triggerType,timeout:properties.configuration.replicaTimeout,retries:properties.configuration.replicaRetryLimit}' \
   --output json
 ```
 
-Repeat the final image query for `pdfval-maintenance` when checking a release. The API and both job definitions should reference the intended commit tag. Existing job executions may have started on an older release; record their start times. The CLI reference is [job execution list](https://learn.microsoft.com/en-us/cli/azure/containerapp/job/execution?view=azure-cli-latest).
+Repeat the final image query with `--name "$MAINTENANCE_NAME"` when checking a release. The API and both job definitions should reference the intended commit tag. Existing job executions may have started on an older release; record their start times. The CLI reference is [job execution list](https://learn.microsoft.com/en-us/cli/azure/containerapp/job/execution?view=azure-cli-latest).
 
 Portal: `Azure Portal > Container App Jobs > [job] > Monitoring > Execution history > [execution] > View logs`. Use saved logs for older executions and for application outcomes, not just platform status.
 
@@ -267,30 +280,29 @@ gh run list --repo "$RUNBOOK_REPO" --workflow deploy.yml --limit 5 \
   --json databaseId,createdAt,updatedAt,headSha,status,conclusion,url
 gh run list --repo "$RUNBOOK_REPO" --workflow ci.yml --limit 5 \
   --json databaseId,createdAt,headSha,status,conclusion,url
-az deployment group list --subscription "$RUNBOOK_SUBSCRIPTION" \
-  --resource-group "$RUNBOOK_RG" \
+az deployment sub list --subscription "$RUNBOOK_SUBSCRIPTION" \
   --query '[].{name:name,state:properties.provisioningState,time:properties.timestamp}' \
   --output table
 ```
 
-Do not attach full deployment output or parameters to a ticket. Use GitHub `Actions > Deploy Azure > [run] > deploy > [step]` for a specific failure and sanitize its excerpt. Resource-group deployments named `portal` and `foundation` are reused, so GitHub is needed for historical release records.
+Do not attach full deployment output or parameters to a ticket. Use GitHub `Actions > Deploy Azure > [run] > deploy > [step]` for a specific failure and sanitize its excerpt. Subscription deployments named `prod-pdfportal-app-deploy-portal` and `prod-pdfportal-admin-deploy-foundation` are reused, so GitHub is needed for historical release records.
 
-For resource changes, go to `Azure Portal > Resource groups > pdf-validation-prod > Activity log`, select the incident window and all statuses, then open relevant events. Record operation, caller, resource, UTC time and correlation ID. For identity changes, use `Azure Portal > Microsoft Entra ID > Monitoring & health > Audit logs`. Activity Log does not capture every application action or automatic restart.
+For resource changes, go to `Azure Portal > Resource groups > the relevant prod-pdfportal-*-rg group > Activity log`, select the incident window and all statuses, then open relevant events. Record operation, caller, resource, UTC time and correlation ID. For identity changes, use `Azure Portal > Microsoft Entra ID > Monitoring & health > Audit logs`. Activity Log does not capture every application action or automatic restart.
 
 ## 6. Logs, Metrics and Alerts
 
 ### 6.1 Query procedure
 
-**Safe to check.** Go to `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs`. Close the query gallery if shown and select the query editor or KQL mode. KQL is the language used to search Azure logs. Paste one query and select Run.
+**Safe to check.** Go to `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs`. Close the query gallery if shown and select the query editor or KQL mode. KQL is the language used to search Azure logs. Paste one query and select Run.
 
-The queries use the table configured by the repository. Set both the query and portal time window to the incident's UTC period. A missing table, delayed ingestion, wrong workspace or permission problem can produce no results. Record that as a visibility gap, not a clean bill of health. Schema guidance: [Container Apps saved logs](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
+The queries use the table configured by the repository. Replace default resource names in the queries with the confirmed deployed names if the environment/project differs. Set both the query and portal time window to the incident's UTC period. A missing table, delayed ingestion, wrong workspace or permission problem can produce no results. Record that as a visibility gap, not a clean bill of health. Schema guidance: [Container Apps saved logs](https://learn.microsoft.com/en-us/azure/container-apps/log-monitoring).
 
 **Request errors and latency by five-minute interval:**
 
 ```kusto
 ContainerAppConsoleLogs_CL
 | where TimeGenerated > ago(1h)
-| where ContainerAppName_s == "pdfval-api"
+| where ContainerAppName_s == "prod-pdfportal-app-ca-api"
 | extend e = parse_json(Log_s)
 | where tostring(e.event) == "request"
 | summarize requests=count(),
@@ -311,7 +323,7 @@ ContainerAppConsoleLogs_CL
 let requestId = "REPLACE_WITH_REQUEST_ID";
 ContainerAppConsoleLogs_CL
 | where TimeGenerated > ago(1h)
-| where ContainerAppName_s == "pdfval-api"
+| where ContainerAppName_s == "prod-pdfportal-app-ca-api"
 | extend e = parse_json(Log_s)
 | where tostring(e.request_id) == requestId
 | project TimeGenerated, RevisionName_s, request_id=tostring(e.request_id),
@@ -355,25 +367,25 @@ For an older window, replace `TimeGenerated > ago(1h)` with an explicit filter s
 
 | Investigation | Exact Portal path and selection | Interpretation |
 |---|---|---|
-| Gateway/application HTTP errors | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics > Requests`; Sum; split by Status Code Category, then Status Code. | Compare failed counts to total requests. Expected unauthenticated 401s and expired-document 404s need context. |
-| CPU or memory pressure | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics`; CPU Usage and Memory Working Set Bytes; split by Replica and filter revision. | Compare each replica with its own configured limit and a healthy period. One core is 1,000,000,000 nanocores; bytes are not a percentage. |
-| Restart loop | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics > Total Replica Restart Count`; also `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`. | Match restarts with health-check failures, memory termination and deployment times. |
-| Live application error | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > Console`; select revision, replica and `api`. | Observe one safe reproduction; capture its time and request ID. An idle replica may emit nothing. |
-| Environment/scaler failure | `Azure Portal > Container Apps Environments > pdfval-env > Monitoring > Log stream` | Look for image pull, identity, scheduling or scaler failures near the job incident. |
+| Gateway/application HTTP errors | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics > Requests`; Sum; split by Status Code Category, then Status Code. | Compare failed counts to total requests. Expected unauthenticated 401s and expired-document 404s need context. |
+| CPU or memory pressure | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics`; CPU Usage and Memory Working Set Bytes; split by Replica and filter revision. | Compare each replica with its own configured limit and a healthy period. One core is 1,000,000,000 nanocores; bytes are not a percentage. |
+| Restart loop | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics > Total Replica Restart Count`; also `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`. | Match restarts with health-check failures, memory termination and deployment times. |
+| Live application error | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > Console`; select revision, replica and `api`. | Observe one safe reproduction; capture its time and request ID. An idle replica may emit nothing. |
+| Environment/scaler failure | `Azure Portal > Container Apps Environments > prod-pdfportal-app-cae-shared > Monitoring > Log stream` | Look for image pull, identity, scheduling or scaler failures near the job incident. |
 | Data-service failure | `Azure Portal > Storage accounts > [confirmed account] > Monitoring > Metrics`; relevant Blob/Queue/Table namespace. | Compare Transactions by Response type, Availability and latency where offered. Metrics can lag. |
 
 The API's resource metrics do not represent the Java worker's use. For jobs, use each job's Metrics and Execution history pages. See [Container Apps metrics](https://learn.microsoft.com/en-us/azure/container-apps/metrics) and [log streams](https://learn.microsoft.com/en-us/azure/container-apps/log-streaming).
 
 ### 6.3 Existing alert coverage and gaps
 
-Go to `Azure Portal > Monitor > Alerts`, filter resource group `pdf-validation-prod`, and open the alert. Inspect definitions at `Azure Portal > Monitor > Alerts > Alert rules`. Inspect recipients at `Azure Portal > Monitor > Alerts > Action groups > pdfval-alerts`. Reading an alert does not authorize disabling it.
+Go to `Azure Portal > Monitor > Alerts`, filter resource group `prod-pdfportal-admin-rg`, and open the alert. Inspect definitions at `Azure Portal > Monitor > Alerts > Alert rules`. Inspect recipients at `Azure Portal > Monitor > Alerts > Action groups > prod-pdfportal-admin-ag`. Reading an alert does not authorize disabling it.
 
 | Alert | Repository condition | What it can miss |
 |---|---|---|
-| `pdfval-processing-failures` | Every 5 minutes over 15 minutes: infrastructure error or maintenance failure count above zero. | Deterministic profile errors, missing telemetry, some platform terminations. |
-| `pdfval-queue-backlog` | Average QueueMessageCount above 1,000 over an hour. | Small, sudden or stuck backlogs. Do not wait for this alert to investigate stalled work. |
-| `pdfval-worker-failed` | Failed platform executions in a 5-minute window. | A successful execution that records an application error or processes nothing. |
-| `pdfval-maintenance-failed` | Failed platform executions in a 5-minute window. | Missing scheduled executions without a failure record. |
+| `prod-pdfportal-admin-sqr-processing` | Every 5 minutes over 15 minutes: infrastructure error or maintenance failure count above zero. | Deterministic profile errors, missing telemetry, some platform terminations. |
+| `prod-pdfportal-admin-ma-backlog` | Average QueueMessageCount above 1,000 over an hour. | Small, sudden or stuck backlogs. Do not wait for this alert to investigate stalled work. |
+| `prod-pdfportal-admin-ma-worker` | Failed platform executions in a 5-minute window. | A successful execution that records an application error or processes nothing. |
+| `prod-pdfportal-admin-ma-maint` | Failed platform executions in a 5-minute window. | Missing scheduled executions without a failure record. |
 
 The action group has no email recipient if `ALERT_EMAIL` is empty. Log-alert query validation is skipped during provisioning, so deployment success alone does not validate its query or delivery. No synthetic availability, login, per-route latency or cleanup-lag alert is defined in the reviewed templates. Have the owner approve gaps and thresholds before adding coverage.
 
@@ -386,7 +398,7 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 **Safe to check:**
 
 1. Run Section 5's health and revision checks. A successful resource provision is not proof of ready replicas.
-2. Open `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream > System`. For an image-pull failure, check the image tag, registry health and runtime AcrPull assignment. For a crash, compare the first failure with the deployed code/configuration.
+2. Open `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream > System`. For an image-pull failure, check the image tag, registry health and runtime AcrPull assignment. For a crash, compare the first failure with the deployed code/configuration.
 3. Inspect Console/saved request logs. `500` with an exception type points toward application code; `storage_unavailable` and readiness failures point toward data access.
 4. Compare CPU, memory and restarts. Inspect `Azure Portal > Service Health > Service issues` for matching service/region impact.
 
@@ -397,10 +409,10 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 **Safe to check:**
 
 1. Confirm the record is `queued`, not `uploading`. Submission must finish before worker processing starts. Obtain metadata through the owner's existing UI/API session; do not access arbitrary users' data.
-2. Inspect `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`. Zero executions with an empty queue is normal; queued documents without progress need investigation.
+2. Inspect `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-worker > Monitoring > Execution history`. Zero executions with an empty queue is normal; queued documents without progress need investigation.
 3. Compare starts/finishes over time with the maximum four concurrent executions. Check environment System logs for queue scaler authentication, image pull, quota or scheduling errors.
 4. Inspect worker Queue/Table/Blob grants and the job's configured storage account. Ready API health alone does not prove worker configuration is correct.
-5. Check `pdfval-maintenance` execution history and recent `maintenance_finished` events. It recovers queued records whose queue send was interrupted.
+5. Check `prod-pdfportal-app-caj-maint` execution history and recent `maintenance_finished` events. It recovers queued records whose queue send was interrupted.
 
 **Good:** New jobs start and document states advance. **Escalate:** DevOps for scaler/start failures, developers for dispatch/state inconsistencies. Do not dequeue, purge or fabricate queue messages. Scaling up workers is a reviewed capacity change, not a first diagnostic step.
 
@@ -431,7 +443,7 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 **Safe to check:**
 
 1. Capture the Entra error, timestamp and correlation ID. Use `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs`, filtered to the confirmed application and incident window.
-2. Inspect `Azure Portal > Container Apps > pdfval-api > Settings > Authentication`; verify Microsoft provider, enabled authentication, configured audience and protected paths against Bicep.
+2. Inspect `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Authentication`; verify Microsoft provider, enabled authentication, configured audience and protected paths against Bicep.
 3. At `Azure Portal > Microsoft Entra ID > App registrations > [portal registration] > Authentication`, compare the callback. At `Certificates & secrets`, inspect expiry metadata only.
 4. At `Azure Portal > Microsoft Entra ID > Enterprise applications > [portal enterprise application] > Users and groups`, verify the intended staff assignment. Use [integration setup](azure-api.md) for application permission/admin-consent checks.
 5. Separate missing/expired session (401), missing role/scope (403), and cookie write protection (403). A pre-login 401 is expected.
@@ -479,14 +491,14 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 
 1. Check the same owner, submission time, expiry and any user deletion. Missing, expired, deleted and other-owner documents deliberately return the same 404.
 2. For an unexpired, owned document, inspect processing state and report errors. A 409 can mean its report is not yet available.
-3. For cleanup, inspect `Azure Portal > Container App Jobs > pdfval-maintenance > Monitoring > Execution history` and `maintenance_finished` failure counts. Expired data may be inaccessible before physical cleanup finishes.
+3. For cleanup, inspect `Azure Portal > Container App Jobs > prod-pdfportal-app-caj-maint > Monitoring > Execution history` and `maintenance_finished` failure counts. Expired data may be inaccessible before physical cleanup finishes.
 4. Preserve the timeline and route unexpected missing data to Section 11 immediately.
 
 **Good:** Owned live results work and maintenance completes. **Escalate:** Developers/storage owner for missing unexpired artifacts or repeated cleanup failure. Do not reassign ownership, edit expiry, remove tombstones or copy one user's reports into another record.
 
 ### 7.10 DNS, TLS or Azure-wide incident
 
-**Safe to check:** Compare the confirmed Application URL, browser error and approved-network results. Inspect `Azure Portal > Container Apps > pdfval-api > Overview > Application URL`. If a custom hostname is confirmed, inspect `Azure Portal > Container Apps > pdfval-api > Settings > Custom domains`. Check `Azure Portal > Service Health > Service issues` for matching region/services; use [Azure status](https://azure.status.microsoft) if the portal is inaccessible.
+**Safe to check:** Compare the confirmed Application URL, browser error and approved-network results. Inspect `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Overview > Application URL`. If a custom hostname is confirmed, inspect `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Settings > Custom domains`. Check `Azure Portal > Service Health > Service issues` for matching region/services; use [Azure status](https://azure.status.microsoft) if the portal is inaccessible.
 
 **Good:** Correct hostname and trusted HTTPS reach the intended app. **Escalate:** Network/DevOps for resolution or certificate issues; security for suspicious certificates; authorized Azure support owner for platform impact. Do not bypass TLS warnings, change DNS or initiate a regional migration as an experiment.
 
@@ -499,8 +511,9 @@ The repository's approved deployment mechanism is **GitHub Actions > Deploy Azur
 | Workflow step | What it does | Investigate on failure |
 |---|---|---|
 | Azure login | Exchanges GitHub OIDC identity for Azure access. | Environment name, federated subject, tenant, subscription and deployment client ID. |
+| Check deployment settings | Requires `AZURE_LOCATION`, validates `AZURE_ENV`/`AZURE_PROJECT` and renders names from the shared map. | Missing region, invalid tokens or a missing/invalid naming map/helper in the checkout. |
 | Compile infrastructure | Builds `infra/main.bicep`. | Bicep syntax/tooling and the selected source commit. |
-| Provision foundation | Creates/updates identity, registry, storage, logs and environment; derives existing portal origin. | Missing provider registration, deployment permissions, name/quota errors and failed Azure operation. |
+| Provision foundation | Creates/updates four groups, both identities, registry, storage/grants, logs, worker networking and both environments; derives existing portal origin. | Missing provider registration, deployment permissions, name/quota errors and failed Azure operation. |
 | Build immutable release image | ACR builds the repository and tags `pdf-validation:<Git SHA>`. | Registry task logs, dependency downloads, installer checksum, frontend/image build. |
 | Deploy application | Reapplies infrastructure/authentication and updates API and both job definitions. | Runtime identity, secret presence, image startup, infrastructure error and source compatibility. |
 | Update foundation origin | Reapplies storage CORS using the deployed hostname. | Origin mismatch, permissions or partial deployment. |
@@ -542,7 +555,7 @@ For experienced operators using the CLI, an approved existing branch/tag can be 
 
 The workflow rebuilds an image using the selected commit tag. A Git SHA tag identifies source; this workflow does not enforce registry tag locking or digest-pinned deployment. A rebuilt image can differ because external build inputs can change. Capture the previous digest when available and do not promise byte-for-byte restoration. Exact-image recovery would require an owner-approved procedure beyond the current workflow.
 
-Never delete the resource group, overwrite data or disable authentication as a rollback method.
+Never delete the resource groups, overwrite data or disable authentication as a rollback method.
 
 ## 9. Approved Recovery and Configuration Changes
 
@@ -552,7 +565,7 @@ Never delete the resource group, overwrite data or disable authentication as a r
 
 Before restarting, record errors/time, impact, serving revision/replicas, logs, CPU/memory, latest deployment, dependency status, approval and observation window. Do not restart during deployment, security investigation or possible data loss without explicit incident-lead direction.
 
-1. Go to `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas` and identify the active revision serving traffic.
+1. Go to `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas` and identify the active revision serving traffic.
 2. Use its Restart action if available, or the reviewed CLI command below. Do not substitute Stop, Deactivate, Delete or Create new revision.
 3. Record the time and observe ready replicas, new logs, errors and the original user action.
 
@@ -623,7 +636,7 @@ Never attach raw deployment exports, authentication headers, browser cookies, to
 
 Complete with a mentor before taking independent production on-call responsibility.
 
-- [ ] Obtain named read access to the resource group, Log Analytics, GitHub workflows and approved Entra logs. Record the separate production-change process.
+- [ ] Obtain named read access to all four resource groups, Log Analytics, GitHub workflows and approved Entra logs. Record the separate production-change process.
 - [ ] Confirm subscription/directory, contacts, alert recipient, incident severity rules and emergency access. Resolve Section 1 TBDs or assign owners and due dates.
 - [ ] Trace a document through the architecture in Section 2 and explain why health, job status and PDF outcome are different signals.
 - [ ] Identify the deployment identity, runtime identity and portal registration without revealing a secret.
@@ -631,7 +644,7 @@ Complete with a mentor before taking independent production on-call responsibili
 - [ ] Read [how-it-works.md](how-it-works.md), [azure-ci.md](azure-ci.md), [api.md](api.md) and the source map in Section 1.
 - [ ] Run the read-only inventory and inspect one request timeline with the mentor. Record permission/visibility gaps.
 
-Do not provision a personal staging environment in the production resource group. The current workflow targets one configured production environment. A new staging workflow/resource group requires an explicit design and approval; cloning the production settings is not a safe substitute.
+Do not provision a personal staging environment in the production resource groups. The current workflow targets one configured production environment. A new staging workflow/resource group requires an explicit design and approval; cloning the production settings is not a safe substitute.
 
 ### 12.2 Local lab
 
@@ -741,12 +754,12 @@ Close the incident only after user recovery and agreed observation, or a documen
 
 | Need | Location |
 |---|---|
-| API state | `Azure Portal > Container Apps > pdfval-api > Application > Revisions and replicas` |
-| API live/platform logs | `Azure Portal > Container Apps > pdfval-api > Monitoring > Log stream` |
-| Saved queries | `Azure Portal > Log Analytics workspaces > pdfval-logs > Logs` |
-| Resource/error metrics | `Azure Portal > Container Apps > pdfval-api > Monitoring > Metrics` |
+| API state | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Application > Revisions and replicas` |
+| API live/platform logs | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Log stream` |
+| Saved queries | `Azure Portal > Log Analytics workspaces > prod-pdfportal-admin-law > Logs` |
+| Resource/error metrics | `Azure Portal > Container Apps > prod-pdfportal-app-ca-api > Monitoring > Metrics` |
 | Job progress | `Azure Portal > Container App Jobs > [job] > Monitoring > Execution history` |
-| Azure changes | `Azure Portal > Resource groups > pdf-validation-prod > Activity log` |
+| Azure changes | `Azure Portal > Resource groups > the relevant prod-pdfportal-*-rg group > Activity log` |
 | Release evidence | [Deploy Azure](https://github.com/ivanbueno/portal-pdf-validation/actions/workflows/deploy.yml), [Verify](https://github.com/ivanbueno/portal-pdf-validation/actions/workflows/ci.yml) |
 | Identity failures | `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs` |
 | Platform incidents | `Azure Portal > Service Health > Service issues` |

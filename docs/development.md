@@ -47,6 +47,17 @@ npm test
 
 The real-engine tests skip when `PDF_VERAPDF_JAR` is unavailable. The emulator test requires running Azurite and a real engine. CI runs the application tests inside the production Python 3.12/Java container, plus emulator and browser acceptance tests.
 
+From the repository root, compile the templates and run the compiled-template checks for Azure infrastructure or [naming](azure-naming.md) changes:
+
+```sh
+python3 scripts/azure_names.py --env prod --project pdfportal
+az bicep build --file infra/foundation.bicep --outfile /tmp/pdf-portal-foundation.json
+az bicep build --file infra/main.bicep --outfile /tmp/pdf-portal-main.json
+PDF_INFRA_TEMPLATE=/tmp/pdf-portal-main.json pytest -q tests/test_worker_infrastructure.py
+```
+
+These checks compare module scopes/references, helper and template names, Azure name limits, worker permissions and network restrictions. Tests that inspect compiled infrastructure skip when `PDF_INFRA_TEMPLATE` is unset. They do not deploy or verify live Azure behavior.
+
 ## Deploy
 
 See [Azure deployment](azure-ci.md) for Entra registration, infrastructure, permissions, OIDC deployment, observability, and smoke tests. Deployment templates and workflows are included; no Azure resources are provisioned by creating this project.

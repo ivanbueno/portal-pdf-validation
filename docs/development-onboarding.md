@@ -196,6 +196,7 @@ Read one user flow end to end before studying every module.
 | PDF locations | [pdf-locations.js](../frontend/src/pdf-locations.js), [pdf-geometry.js](../frontend/src/pdf-geometry.js), [pdf-structure.js](../frontend/src/pdf-structure.js) | Interpret report locations and find/render useful regions. |
 | UI presentation | [ui.js](../frontend/src/ui.js), [style.css](../frontend/src/style.css), [login.css](../frontend/src/login.css), [theme.js](../frontend/src/theme.js) | Labels, DOM helpers, layout, sign-in styling and theme. |
 | Deployment/runtime | [compose.yaml](../compose.yaml), [Dockerfile](../Dockerfile), [infra/main.bicep](../infra/main.bicep), [infra/foundation.bicep](../infra/foundation.bicep) | Local services, shared image and Azure resources. |
+| Azure modules and names | [Template ownership](azure-container-apps-architecture.md#template-ownership), [names.json](../infra/names.json), [azure_names.py](../scripts/azure_names.py) | Admin/net/app/data modules share one naming map; the workflow and manual commands render names from it. |
 
 ### Trace one reservation through completion
 
@@ -277,6 +278,7 @@ The source of truth for CI is [.github/workflows/ci.yml](../.github/workflows/ci
 | Upload and workspace UX | [portal.spec.js](../frontend/tests/portal.spec.js) | Real local flows, retries, session UI, keyboard and accessibility checks. |
 | Polling or stale-request races | [coordination.spec.js](../frontend/tests/coordination.spec.js) | Scheduling, cancellation, pagination and report refresh coordination. |
 | PDF previews and resource lifetime | [previews.spec.js](../frontend/tests/previews.spec.js), [pdf-sessions.unit.js](../frontend/tests/pdf-sessions.unit.js) | Lazy loading, cache/session bounds, disposal and cancellation. |
+| Azure groups, naming, identities or networking | [test_worker_infrastructure.py](../tests/test_worker_infrastructure.py) with `PDF_INFRA_TEMPLATE` set after compilation | Compiled module scopes and references, helper/template naming parity, name limits, worker permissions and network restrictions. |
 | PHP SDK | [ClientTest.php](../sdk/php/tests/ClientTest.php) | Client contracts and transport behavior. The main Verify workflow does not run this suite. |
 
 The [MemoryStorage fixture](../tests/conftest.py) intentionally ignores OData prefilters, and projected reads do not carry ETags. Unit success does not establish that a real Table query has correct syntax or filtering; use emulator integration when changing it.
@@ -327,13 +329,16 @@ The explicit local `PORTAL_URL` prevents an inherited setting from sending destr
 
 ### Infrastructure and PHP changes
 
-For Bicep changes, use the same compilation check as CI with the approved Azure CLI/Bicep toolchain:
+For Bicep or naming changes, use the approved Azure CLI/Bicep toolchain to compile both entry points and run the compiled-template checks used by CI:
 
 ```sh
+python3 scripts/azure_names.py --env prod --project pdfportal
+az bicep build --file infra/foundation.bicep --outfile /tmp/pdf-portal-onboarding-foundation.json
 az bicep build --file infra/main.bicep --outfile /tmp/pdf-portal-onboarding-main.json
+PDF_INFRA_TEMPLATE=/tmp/pdf-portal-onboarding-main.json python -m pytest -q tests/test_worker_infrastructure.py
 ```
 
-This compiles a local file; it does not deploy. Compilation cannot prove permissions, quotas or cloud behavior.
+These commands render names and check local templates; they do not deploy. Without `PDF_INFRA_TEMPLATE`, tests that inspect the compiled infrastructure skip. Compilation and local checks cannot prove live Azure permissions, quotas, DNS or control-plane behavior.
 
 For SDK work, from the repository root:
 
@@ -388,6 +393,8 @@ For Azure incidents, hand over to [Tier 1](runbook-tier-1.md) or [Tier 2](runboo
 ### Release handoff
 
 Production runs on Azure Container Apps. The [Deploy Azure workflow](../.github/workflows/deploy.yml) builds one image and updates the API plus worker and maintenance jobs. It also reapplies infrastructure and authentication settings. There is no declared workflow dependency requiring **Verify** to pass before deployment; the release owner must check the approved commit explicitly.
+
+Fresh deployments create separate admin, net, app and data resource groups. Defaults are `AZURE_ENV=prod` and `AZURE_PROJECT=pdfportal`; functions distinguish resource purpose and the current single instances omit instance numbers. `AZURE_LOCATION` is required. Review the [naming inventory](azure-naming.md) and group ownership before changing deployment tokens or module references.
 
 Provide DevOps the source commit, compatibility assessment, expected user-visible change, smoke tests and rollback constraints. The deployment's readiness check does not prove login, uploads or validation work. Use [azure-ci.md](azure-ci.md) and [the Tier 2 release procedure](runbook-tier-2.md#8-releases-failed-deployments-and-rollback) for approved deployments.
 

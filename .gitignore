@@ -11,3 +11,4 @@ test-results/
 playwright-report/
 infra/*.json
 !infra/*.parameters.example.json
+!infra/names.json

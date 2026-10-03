@@ -12,8 +12,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: production
     env:
-      RESOURCE_GROUP: ${{ vars.AZURE_RESOURCE_GROUP }}
-      PREFIX: ${{ vars.AZURE_PREFIX || 'pdfval' }}
+      AZURE_ENV: ${{ vars.AZURE_ENV || 'prod' }}
+      LOCATION: ${{ vars.AZURE_LOCATION }}
+      AZURE_PROJECT: ${{ vars.AZURE_PROJECT || 'pdfportal' }}
       TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
       API_CLIENT_ID: ${{ vars.API_CLIENT_ID }}
       ALERT_EMAIL: ${{ vars.ALERT_EMAIL }}
@@ -24,19 +25,25 @@ jobs:
           client-id: ${{ vars.AZURE_DEPLOY_CLIENT_ID }}
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+      - name: Check deployment settings
+        run: |
+          set -euo pipefail
+          test -n "$LOCATION"
+          python3 scripts/azure_names.py --env "$AZURE_ENV" --project "$AZURE_PROJECT" --format shell >> "$GITHUB_ENV"
       - name: Compile infrastructure
         run: az bicep build --file infra/main.bicep --outfile /tmp/main.json
       - name: Provision foundation
         run: |
-          ORIGIN=$(az containerapp show --resource-group "$RESOURCE_GROUP" --name "$PREFIX-api" --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null || true)
+          set -euo pipefail
+          ORIGIN=$(az containerapp show --resource-group "$APP_RESOURCE_GROUP" --name "$API_NAME" --query properties.configuration.ingress.fqdn -o tsv 2>/dev/null || true)
           ORIGIN="https://${ORIGIN:-configure-after-first-deploy.invalid}"
           echo "ORIGIN=$ORIGIN" >> "$GITHUB_ENV"
-          az deployment group create --resource-group "$RESOURCE_GROUP" --name foundation \
-            --template-file infra/foundation.bicep --parameters prefix="$PREFIX" portalOrigin="$ORIGIN" --output none
-          REGISTRY=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name foundation --query properties.outputs.registryName.value -o tsv)
+          az deployment sub create --location "$LOCATION" --name "$FOUNDATION_DEPLOYMENT" \
+            --template-file infra/foundation.bicep --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" portalOrigin="$ORIGIN" --output none
+          REGISTRY=$(az deployment sub show --name "$FOUNDATION_DEPLOYMENT" --query properties.outputs.registryName.value -o tsv)
           echo "REGISTRY=$REGISTRY" >> "$GITHUB_ENV"
       - name: Build immutable release image
-        run: az acr build --registry "$REGISTRY" --image "pdf-validation:$GITHUB_SHA" .
+        run: az acr build --resource-group "$ADMIN_RESOURCE_GROUP" --registry "$REGISTRY" --image "pdf-validation:$GITHUB_SHA" .
       - name: Deploy application
         env:
           ENTRA_CLIENT_SECRET: ${{ secrets.ENTRA_CLIENT_SECRET }}
@@ -51,12 +58,12 @@ jobs:
           with open(sys.argv[1], 'w') as output:
               json.dump({'entraClientSecret': {'value': os.environ['ENTRA_CLIENT_SECRET']}}, output)
           PY
-          az deployment group create --resource-group "$RESOURCE_GROUP" --name portal \
-            --template-file infra/main.bicep --parameters prefix="$PREFIX" imageTag="$GITHUB_SHA" \
+          az deployment sub create --location "$LOCATION" --name "$PORTAL_DEPLOYMENT" \
+            --template-file infra/main.bicep --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" imageTag="$GITHUB_SHA" \
             tenantId="$TENANT_ID" apiClientId="$API_CLIENT_ID" "@$SECRET_PARAMS" alertEmail="$ALERT_EMAIL" portalOrigin="$ORIGIN" --output none
-          ORIGIN=$(az deployment group show --resource-group "$RESOURCE_GROUP" --name portal --query properties.outputs.portalUrl.value -o tsv)
-          az deployment group create --resource-group "$RESOURCE_GROUP" --name foundation \
-            --template-file infra/foundation.bicep --parameters prefix="$PREFIX" portalOrigin="$ORIGIN" --output none
+          ORIGIN=$(az deployment sub show --name "$PORTAL_DEPLOYMENT" --query properties.outputs.portalUrl.value -o tsv)
+          az deployment sub create --location "$LOCATION" --name "$FOUNDATION_DEPLOYMENT" \
+            --template-file infra/foundation.bicep --parameters env="$AZURE_ENV" project="$AZURE_PROJECT" location="$LOCATION" portalOrigin="$ORIGIN" --output none
           echo "Portal: $ORIGIN" >> "$GITHUB_STEP_SUMMARY"
           echo "Configure $ORIGIN/.auth/login/aad/callback as an Entra Web redirect URI before first use." >> "$GITHUB_STEP_SUMMARY"
           curl --fail --retry 12 --retry-delay 10 --retry-all-errors "$ORIGIN/health/ready"
