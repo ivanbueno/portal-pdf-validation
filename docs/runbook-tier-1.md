@@ -177,7 +177,7 @@ The paths here apply to the deployed Container App. The detailed shared checks a
 **What to check**
 
 1. Identify whether the error comes from sign-in, the portal API, or the storage upload host. Do not copy the upload URL's query string.
-2. Check the user's work account and the exact error. Staff normally need `Validation.User`; integrations use `Validation.Run`, or an approved delegated `Validation.Access` scope.
+2. Check the user's work account and the exact error. Staff normally need `Validation.User`; machine integrations use `Validation.Run`; delegated integrations require both `Validation.Access` and the signed-in user's `Validation.User` role.
 3. Ask Tier 2 to inspect role assignments and sign-in failures. Browser uploads may also fail because their temporary grant expired or the allowed website origin is wrong.
 
 **Where to go in Azure:** `Azure Portal > Microsoft Entra ID > Enterprise applications > [confirmed portal enterprise application] > Users and groups`; `Azure Portal > Microsoft Entra ID > Monitoring & health > Sign-in logs`.

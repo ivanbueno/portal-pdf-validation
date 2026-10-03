@@ -19,7 +19,7 @@ export const withDocument = documentSessions((docId) => {
     const data = new Uint8Array(await blob.arrayBuffer());
     signal.throwIfAborted();
     // pdf.js takes ownership of the bytes it is given, so it gets a copy.
-    task = pdfjs.getDocument({ data: data.slice() });
+    task = pdfjs.getDocument({ data: data.slice(), isEvalSupported: false });
     const pdf = await task.promise;
     signal.throwIfAborted();
     source = {

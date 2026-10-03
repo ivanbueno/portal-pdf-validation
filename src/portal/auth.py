@@ -36,7 +36,7 @@ class Identity:
     kind: str
 
 
-def parse_principal(encoded, settings):
+def parse_principal(encoded, settings, *, bearer_token=False):
     try:
         if not encoded or len(encoded) > 65536:
             raise ValueError()
@@ -60,15 +60,24 @@ def parse_principal(encoded, settings):
     scopes = {scope for claim in values["scp"] for scope in claim.split()}
     roles = values["roles"]
     if values["idtyp"] == {"app"} or (
-        settings.app_role in roles and not scopes and settings.user_role not in roles
+        not values["idtyp"]
+        and settings.app_role in roles
+        and not values["scp"]
+        and settings.user_role not in roles
     ):
+        if values["scp"]:
+            raise HTTPException(403, "Application tokens cannot include delegated scopes")
         if settings.app_role not in roles:
-            raise HTTPException(403, "Application requires the Validation.Run role")
+            raise HTTPException(403, f"Application requires the {settings.app_role} role")
         kind = "app"
-    elif settings.user_role in roles or settings.scope in scopes:
-        kind = "user"
     else:
-        raise HTTPException(403, "User requires the Validation.User role or Validation.Access scope")
+        if settings.user_role not in roles:
+            raise HTTPException(403, f"User requires the {settings.user_role} role")
+        # Easy Auth browser sessions carry an ID-token principal without API scopes.
+        # Delegated principals and all user bearer requests must have both permissions.
+        if (bearer_token or values["scp"]) and settings.scope not in scopes:
+            raise HTTPException(403, f"Delegated access requires the {settings.scope} scope")
+        kind = "user"
     owner_id = hashlib.sha256(f"{settings.tenant_id}:{kind}:{subject}".encode()).hexdigest()
     return Identity(owner_id, next(iter(sorted(values["name"])), "Signed in"), kind)
 
@@ -80,7 +89,9 @@ def identity(request: Request, credentials=Depends(bearer)):
     # Standalone local servers never trust user-supplied Azure headers.
     if settings.auth_mode != "easyauth" or settings.environment not in {"production", "test"}:
         raise HTTPException(401, "Easy Auth is not configured")
-    principal = parse_principal(request.headers.get("x-ms-client-principal"), settings)
+    principal = parse_principal(
+        request.headers.get("x-ms-client-principal"), settings, bearer_token=credentials is not None
+    )
     if request.method not in {"GET", "HEAD", "OPTIONS"} and credentials is None:
         # A non-simple header + no cross-origin API CORS prevents cookie-based CSRF.
         # Bearer callers are already validated by Easy Auth and need no browser header.

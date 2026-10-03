@@ -130,6 +130,55 @@ def test_full_lifecycle_and_snapshot(client, store, settings, submitted):
     assert store.get(OWNER, did)["attempts"] == 1
 
 
+def test_worker_needs_only_snapshot_reads_and_report_writes(client, store, settings, submitted, monkeypatch):
+    doc = store.get(OWNER, submitted)
+    input_name = f"{OWNER}/{submitted}/input.pdf"
+    report_prefix = f"{OWNER}/{submitted}/reports/"
+    download, put = store.download, store.put
+    downloads, writes = [], []
+
+    def snapshot_download(name, target, snapshot=None):
+        assert (name, snapshot) == (input_name, doc["snapshot"])
+        downloads.append((name, snapshot))
+        download(name, target, snapshot)
+
+    def report_write(name, data, content_type="application/json"):
+        assert name.startswith(report_prefix)
+        writes.append(name)
+        put(name, data, content_type)
+
+    # Model the worker identity: no base-blob reads, report reads, listing, or deletion.
+    with monkeypatch.context() as restricted:
+        restricted.setattr(store, "download", snapshot_download)
+        restricted.setattr(store, "put", report_write)
+        for method in ("read", "stream", "purge", "snapshot", "upload_url"):
+            restricted.setattr(store, method, raising(AssertionError(f"Worker called {method}")))
+        assert process_document(store, settings, OWNER, submitted, failing_runner([ISSUE]))
+
+    assert downloads == [(input_name, doc["snapshot"])]
+    finished = store.get(OWNER, submitted)
+    assert finished["report"] in writes and finished["report_index"] in writes
+    assert set(json.loads(finished["raw_reports"]).values()) <= set(writes)
+    assert len({name[len(report_prefix) :].split("/", 1)[0] for name in writes}) == 1
+    response = client.get(f"{BASE}/documents/{submitted}").json()
+    assert all(result["issues"] for result in response["results"])
+    assert client.get(f"{BASE}/documents/{submitted}/issues").json()["total"] == 1
+
+
+def test_preexisting_report_paths_remain_readable(client, store, settings, submitted, monkeypatch):
+    # Previously published documents store the old path directly in their metadata.
+    with monkeypatch.context() as legacy:
+        legacy.setattr(worker, "run_prefix", lambda doc: f"{OWNER}/{submitted}/{doc['run_id']}/")
+        assert process_document(store, settings, OWNER, submitted, failing_runner([ISSUE]))
+
+    assert "/reports/" not in store.get(OWNER, submitted)["report"]
+    response = client.get(f"{BASE}/documents/{submitted}").json()
+    assert all(result["issues"] for result in response["results"])
+    assert client.get(f"{BASE}/documents/{submitted}/issues").json()["total"] == 1
+    assert client.get(f"{BASE}/documents/{submitted}/reports/json").status_code == 200
+    assert client.get(f"{BASE}/documents/{submitted}/reports/xml?profile=pdfua-1").status_code == 200
+
+
 def test_partial_profile_results(client, store, settings, submitted):
 
     def runner(path, profile, s):
@@ -228,11 +277,18 @@ def test_delete_race_does_not_publish(client, store, settings, submitted, monkey
             assert client.delete(f"{BASE}/documents/{submitted}").status_code == 204
         return successful_runner(path, profile, s)
 
-    process_document(store, settings, OWNER, submitted, runner)
+    with monkeypatch.context() as restricted:
+        # Purge lists and deletes blobs: neither permission belongs to a worker.
+        restricted.setattr(store, "purge", raising(AssertionError("Worker tried to purge blobs")))
+        assert process_document(store, settings, OWNER, submitted, runner)
     # The final save lost to the deletion, so the attempt never reports finishing.
     assert events == ["validation_started"]
     assert client.get(f"{BASE}/documents/{submitted}").status_code == 404
     assert store.get(OWNER, submitted)["status"] == "deleted"
+    assert any(
+        isinstance(name, str) and name.startswith(f"{OWNER}/{submitted}/reports/") for name in store.objects
+    )
+    # The maintenance identity cleans up the abandoned reports along with the input.
     sweep(store, settings)
     assert not store.objects
 

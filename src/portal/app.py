@@ -2,7 +2,7 @@ import logging
 import re
 import time
 import uuid
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from contextlib import asynccontextmanager
 from typing import Annotated, Literal
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request
@@ -64,13 +64,55 @@ def Limit(maximum):
     return Annotated[int, Query(ge=1, le=maximum)]
 
 
+def content_security_policy(settings):
+    # Uploads go directly to one configured Blob endpoint, never arbitrary Azure accounts.
+    endpoint = settings.public_blob_endpoint
+    if not endpoint and settings.storage_connection_string:
+        parts = dict(
+            part.split("=", 1) for part in settings.storage_connection_string.split(";") if "=" in part
+        )
+        endpoint = parts.get("BlobEndpoint", "")
+        if not endpoint and parts.get("AccountName"):
+            endpoint = (
+                f"{parts.get('DefaultEndpointsProtocol', 'https')}://{parts['AccountName']}.blob."
+                f"{parts.get('EndpointSuffix', 'core.windows.net')}"
+            )
+    if not endpoint and settings.storage_account:
+        endpoint = f"https://{settings.storage_account}.blob.core.windows.net"
+    connect = "'self'"
+    if endpoint:
+        url = urlsplit(endpoint)
+        if (
+            url.scheme not in {"http", "https"}
+            or not url.hostname
+            or url.username is not None
+            or any(char.isspace() or char in "';\"*" for char in url.netloc)
+        ):
+            raise ValueError("Invalid Blob endpoint for browser uploads")
+        connect += f" {url.scheme}://{url.netloc}"
+    return (
+        "default-src 'self'; frame-ancestors 'none'; object-src 'none'; "
+        "base-uri 'self'; form-action 'self'; worker-src 'self'; "
+        "img-src 'self' data:; font-src 'self' data:; "
+        f"connect-src {connect}"
+    )
+
+
 def standard_headers(request, status):
     """Headers on every response, including the 500 for an unexpected failure."""
     headers = {
         "X-Content-Type-Options": "nosniff",
         "Referrer-Policy": "strict-origin-when-cross-origin",
         "Cache-Control": "no-store",
+        "Content-Security-Policy": request.app.state.content_security_policy,
+        "X-Frame-Options": "DENY",
     }
+    if request.app.state.settings.environment == "production":
+        # HTTPS terminates at Container Apps ingress; the backend hop can be HTTP.
+        headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    elif request.url.path in {"/docs", "/redoc", "/docs/oauth2-redirect"}:
+        # FastAPI's development-only docs use CDN assets and inline initialization.
+        headers["Content-Security-Policy"] = "frame-ancestors 'none'; object-src 'none'; base-uri 'self'"
     if status in {200, 206, 304} and HASHED_ASSET.fullmatch(request.url.path):
         headers["Cache-Control"] = "public, max-age=31536000, immutable"
     if request_id := getattr(request.state, "request_id", None):
@@ -95,10 +137,13 @@ def create_app(settings=None, storage=None):
         title="PDF Validation Portal API",
         version="1.0.0",
         lifespan=lifespan,
+        docs_url=None if settings.environment == "production" else "/docs",
+        redoc_url=None if settings.environment == "production" else "/redoc",
         description="Private asynchronous PDF/UA-1 and custom WCAG validation. " + DISCLAIMER,
     )
     app.add_middleware(MetadataBodyLimit)
     app.state.settings, app.state.storage = settings, storage
+    app.state.content_security_policy = content_security_policy(settings)
     Owner = Annotated[str, Depends(owner)]
 
     def owned_document(doc_id: str, principal: Owner):

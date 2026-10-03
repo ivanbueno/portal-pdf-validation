@@ -72,8 +72,8 @@ def claim(store, settings, doc):
 
 
 def run_prefix(doc):
-    """Blobs written by one attempt, so a losing attempt removes exactly its own output."""
-    return prefix(doc) + doc["run_id"] + "/"
+    """The report-only namespace permitted to the worker's storage identity."""
+    return prefix(doc) + "reports/" + doc["run_id"] + "/"
 
 
 def run_profiles(store, settings, doc, runner):
@@ -136,7 +136,8 @@ def publish(store, doc, results, raw_reports):
     try:
         save_transition(store, doc, **fields, **names, raw_reports=json.dumps(raw_reports))
     except Conflict:
-        store.purge(run_prefix(doc))
+        # Workers cannot list or delete blobs. Orphaned attempt output stays private until
+        # maintenance purges the whole document after deletion or retention expiry.
         raise Superseded()
     log_event(log, "validation_finished", document_id=doc["id"], status=fields["status"])
 

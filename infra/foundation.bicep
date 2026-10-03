@@ -6,10 +6,16 @@ resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' 
   name: '${prefix}-runtime'
   location: location
 }
+// Never attach the API/maintenance identity to the worker, including for image pulls or scaling.
+resource workerIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
+  name: '${prefix}-worker'
+  location: location
+}
 resource registry 'Microsoft.ContainerRegistry/registries@2023-07-01' = {
   name: '${prefix}${suffix}'
   location: location
-  sku: { name: 'Basic' }
+  // Private Link image pulls from the isolated worker environment require Premium.
+  sku: { name: 'Premium' }
   properties: { adminUserEnabled: false }
 }
 resource storage 'Microsoft.Storage/storageAccounts@2023-05-01' = {
@@ -106,10 +112,32 @@ resource environment 'Microsoft.App/managedEnvironments@2025-01-01' = {
     }
   }
 }
+module workerAccess './worker-access.bicep' = {
+  name: '${prefix}-worker-access'
+  params: {
+    prefix: prefix
+    storageName: storage.name
+    registryName: registry.name
+  }
+  dependsOn: [workerIdentity, container, queue, table]
+}
+module workerNetwork './worker-network.bicep' = {
+  name: '${prefix}-worker-network'
+  params: {
+    prefix: prefix
+    location: location
+    storageName: storage.name
+    registryName: registry.name
+    logsName: logs.name
+  }
+}
 output identityId string = identity.id
+output workerIdentityId string = workerIdentity.id
+output workerClientId string = workerIdentity.properties.clientId
 output storageName string = storage.name
 output storageId string = storage.id
 output registryName string = registry.name
 output registryServer string = registry.properties.loginServer
 output environmentId string = environment.id
+output workerEnvironmentId string = workerNetwork.outputs.environmentId
 output logsId string = logs.id

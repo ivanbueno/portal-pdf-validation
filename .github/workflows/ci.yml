@@ -21,6 +21,8 @@ jobs:
       - run: ruff check src tests scripts && ruff format --check src tests scripts
       - run: npm ci --prefix frontend && npm run format:check --prefix frontend && npm run build --prefix frontend
       - run: az bicep build --file infra/main.bicep --outfile /tmp/main.json
+      - name: Check compiled worker permissions and networking
+        run: PDF_INFRA_TEMPLATE=/tmp/main.json pytest -q tests/test_worker_infrastructure.py
       - run: docker compose up -d --build
       - name: Wait for API
         run: |

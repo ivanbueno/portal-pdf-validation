@@ -47,6 +47,7 @@ sequenceDiagram
 - Upload requests carry metadata only; PDFs go directly to Blob Storage with short-lived, per-blob write grants. An owner-protected endpoint streams the submitted snapshot for viewing in a new tab.
 - Submission checks the actual size and signature and pins an immutable snapshot before queueing. Original filenames are display metadata, never blob paths or shell arguments.
 - Every document is scoped to its tenant and owner. Production rejects the local development identity.
+- CSP and `X-Frame-Options: DENY` prevent framing of the portal. Scripts and PDF workers load from the portal origin; direct uploads are allowed only to the configured Blob endpoint. Production uses HSTS, and PDF previews explicitly disable JavaScript evaluation.
 
 ## Reliability
 
@@ -85,19 +86,25 @@ flowchart TB
     subgraph RG["Resource group"]
         subgraph ENV["pdfval-env"]
             API["pdfval-api<br/>Container App<br/>0.5 vCPU · 1 GiB · 1–3 replicas"]
-            W["pdfval-worker<br/>Event job · queue-triggered<br/>2 vCPU · 4 GiB · max 4"]
             M["pdfval-maintenance<br/>Scheduled job · every 2 min<br/>0.5 vCPU · 1 GiB"]
         end
+        subgraph WENV["pdfval-worker-env · private VNet · restricted egress"]
+            W["pdfval-worker<br/>Event job · queue-triggered<br/>2 vCPU · 4 GiB · max 4"]
+        end
+        WID["pdfval-worker<br/>Managed identity"]
         ID["pdfval-runtime<br/>Managed identity"]
-        ACR["Container Registry<br/>Basic"]
+        ACR["Container Registry<br/>Premium · Private Link"]
         ST["Storage account · Standard LRS<br/>blob: documents · queue: validation · table: validation"]
         LOG["pdfval-logs<br/>Log Analytics · 30 days"]
         AL["Alerts + action group"]
     end
-    API & W & M -. run as .-> ID
+    API & M -. run as .-> ID
+    W -. run as .-> WID
+    WID -->|Scoped worker grants · private endpoints| ST
+    WID -->|AcrPull · private endpoint| ACR
     ID -->|AcrPull| ACR
     ID -->|Blob/Queue/Table data roles| ST
-    ENV --> LOG
+    ENV & WENV --> LOG
     LOG & ST & W & M --> AL
 ```
 
@@ -106,6 +113,7 @@ flowchart TB
 | Resource | Type | Size and scale | Other settings |
 |---|---|---|---|
 | `pdfval-env` | Container Apps managed environment | Consumption plan (no dedicated workload profiles) | Sends app logs to `pdfval-logs` |
+| `pdfval-worker-env` | Internal Container Apps workload-profiles environment | Consumption profile in a dedicated VNet subnet | Private endpoints to storage/registry; outbound deny with required Azure platform exceptions |
 | `pdfval-api` | Container App | 0.5 vCPU, 1 GiB per replica; **1–3 replicas**, scaling at 30 concurrent HTTP requests per replica | External HTTPS ingress only (port 8000, insecure traffic refused); single active revision; liveness and readiness probes every 30 s |
 | `pdfval-worker` | Container Apps job, event-triggered | **2 vCPU, 4 GiB** per execution; 0 to **4 concurrent executions**, one per queued message, polled every 10 s | 15-minute execution timeout; no platform retry (the app manages up to three attempts) |
 | `pdfval-maintenance` | Container Apps job, scheduled | 0.5 vCPU, 1 GiB | Cron `*/2 * * * *` (every 2 minutes); 10-minute timeout; 1 retry |
@@ -127,11 +135,12 @@ Storage versioning, soft delete and backups are **not** enabled. Documents are s
 
 | Resource | Details |
 |---|---|
-| `pdfval-runtime` | User-assigned managed identity shared by the API and both jobs. No secrets or connection strings are used for storage or the registry |
-| Storage role assignments | Storage Blob Data Contributor, Storage Blob Delegator (to issue short-lived user-delegation upload grants), Storage Queue Data Contributor, Storage Table Data Contributor — scoped to the storage account |
+| `pdfval-runtime` | User-assigned managed identity shared by the API and maintenance job. No secrets or connection strings are used for storage or the registry |
+| `pdfval-worker` | Separate worker identity: snapshot-only input reads and report-only writes via Blob ABAC; queue consumption and table read/update scoped to `validation`. See [worker isolation and remaining risks](worker-isolation.md) |
+| Runtime storage role assignments | Storage Blob Data Contributor, Storage Blob Delegator (to issue short-lived user-delegation upload grants), Storage Queue Data Contributor, Storage Table Data Contributor — scoped to the storage account |
 | Registry role assignment | AcrPull on the registry |
 | Easy Auth (`authConfigs`) | Microsoft Entra ID provider on the API; returns 401 to unauthenticated requests except `/`, `/assets/*`, `/api/config` and the health endpoints; HTTPS required. The Entra client secret is stored as a Container App secret |
-| Container Registry `pdfval<suffix>` | **Basic** tier; admin user disabled (pulls use the managed identity) |
+| Container Registry `pdfval<suffix>` | **Premium** tier for the worker private endpoint; admin user disabled (pulls use the managed identity) |
 
 The Entra app registration, resource group and GitHub OIDC identity are created once by an administrator, not by the templates. See [Deploy to Azure](azure-ci.md).
 

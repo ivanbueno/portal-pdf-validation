@@ -106,10 +106,72 @@ def test_application_permission_and_owner_namespace(easy, settings):
     assert error.value.status_code == 403
 
 
-def test_delegated_api_client_compatibility(easy, settings):
-    p = principal([("tid", "tenant"), ("oid", "person"), ("scp", "Validation.Access")])
+@pytest.mark.parametrize("scope_claim", ["scp", "http://schemas.microsoft.com/identity/claims/scope"])
+def test_delegated_api_client_requires_both_permissions_and_keeps_ownership(easy, settings, scope_claim):
+    p = principal(
+        [
+            ("tid", "tenant"),
+            ("oid", "person"),
+            ("roles", "Validation.User"),
+            (scope_claim, "Other.Scope Validation.Access"),
+        ]
+    )
     assert parse_principal(p, settings).owner == parse_principal(principal(), settings).owner
-    assert easy.get("/api/v1/documents", headers={"x-ms-client-principal": p}).status_code == 200
+    headers = {"x-ms-client-principal": p, "Authorization": "Bearer platform-validated-token"}
+    assert easy.get("/api/v1/documents", headers=headers).status_code == 200
+    assert (
+        easy.post("/api/v1/documents", headers=headers, json={"name": "a.pdf", "size": 9}).status_code == 201
+    )
+
+
+@pytest.mark.parametrize("bearer_token", [False, True])
+@pytest.mark.parametrize("scope_claim", ["scp", "http://schemas.microsoft.com/identity/claims/scope"])
+@pytest.mark.parametrize(
+    "roles,scope",
+    [
+        ([], "Validation.Access"),
+        (["OtherRole"], "Validation.Access"),
+        (["Validation.Run"], "Validation.Access"),
+        (["Validation.User"], "Other.Scope"),
+        (["Validation.User"], "Validation.Access.Extra"),
+        (["Validation.User"], " "),
+    ],
+)
+def test_delegated_scope_never_replaces_user_assignment(easy, roles, scope, scope_claim, bearer_token):
+    claims = [("tid", "tenant"), ("oid", "person"), (scope_claim, scope)]
+    claims += [("roles", role) for role in roles]
+    headers = {"x-ms-client-principal": principal(claims)}
+    if bearer_token:
+        headers["Authorization"] = "Bearer platform-validated-token"
+    assert easy.get("/api/v1/documents", headers=headers).status_code == 403
+    assert easy.get("/api/session", headers=headers).status_code == 403
+    # Supply the browser header too so a CSRF rejection cannot mask an authorization bypass.
+    headers["X-Requested-With"] = "PDFValidationPortal"
+    assert (
+        easy.post("/api/v1/documents", headers=headers, json={"name": "a.pdf", "size": 9}).status_code == 403
+    )
+
+
+def test_role_only_user_bearer_cannot_use_browser_session_exception(easy):
+    headers = {"x-ms-client-principal": principal(), "Authorization": "Bearer platform-validated-token"}
+    assert easy.get("/api/v1/documents", headers=headers).status_code == 403
+    del headers["Authorization"]
+    assert easy.get("/api/v1/documents", headers=headers).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "extra,status",
+    [
+        ([], 200),  # Application tokens without the optional idtyp claim remain supported.
+        ([("idtyp", "user")], 403),
+        ([("idtyp", "app"), ("scp", "Validation.Access")], 403),
+        ([("scp", " ")], 403),
+    ],
+)
+def test_application_role_cannot_bypass_delegated_requirements(easy, extra, status):
+    claims = [("tid", "tenant"), ("oid", "client"), ("roles", "Validation.Run"), *extra]
+    headers = {"x-ms-client-principal": principal(claims), "Authorization": "Bearer platform-validated-token"}
+    assert easy.get("/api/v1/documents", headers=headers).status_code == status
 
 
 def test_missing_permission_and_foreign_workspace(easy):

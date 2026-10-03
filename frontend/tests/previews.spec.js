@@ -129,6 +129,14 @@ for (const lateOutcome of ["resolve", "reject"]) {
 test("two expanded documents render real PDFs and reuse their sessions", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    window.cspViolations = [];
+    document.addEventListener("securitypolicyviolation", (event) =>
+      window.cspViolations.push(event.violatedDirective),
+    );
+  });
+  const workers = [];
+  page.on("worker", (worker) => workers.push(worker.url()));
   const fetches = [];
   const libraries = [];
   page.on("request", (request) => {
@@ -168,6 +176,8 @@ test("two expanded documents render real PDFs and reuse their sessions", async (
   await page.locator("#toggle-a").click();
   await expect(page.locator("#details-a .preview-thumb")).toHaveCount(0);
   await expect(page.locator("#details-b .preview-thumb")).toHaveCount(2);
+  expect(workers.some((url) => url.includes("pdf.worker"))).toBe(true);
+  expect(await page.evaluate(() => window.cspViolations)).toEqual([]);
 });
 
 test("metadata checks do not load PDF libraries", async ({ page }) => {

@@ -26,7 +26,7 @@ az account set --subscription "$SUBSCRIPTION_ID"
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION"
 ```
 
-The deployment identity in the next step needs resource creation, ACR build, and role assignment permissions scoped to this resource group. Allow the `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.Storage`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, and `Microsoft.Authorization` providers to register. An administrator may register these providers ahead of time if the deployment identity cannot.
+The deployment identity in the next step needs resource creation, ACR build, and role assignment permissions scoped to this resource group. Allow the `Microsoft.App`, `Microsoft.ContainerRegistry`, `Microsoft.Storage`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.Network`, and `Microsoft.Authorization` providers to register. An administrator may register these providers ahead of time if the deployment identity cannot.
 
 ```sh
 for provider in \
@@ -35,6 +35,7 @@ for provider in \
   Microsoft.ContainerRegistry \
   Microsoft.Insights \
   Microsoft.ManagedIdentity \
+  Microsoft.Network \
   Microsoft.OperationalInsights \
   Microsoft.Storage
 do
@@ -47,6 +48,7 @@ for provider in \
   Microsoft.ContainerRegistry \
   Microsoft.Insights \
   Microsoft.ManagedIdentity \
+  Microsoft.Network \
   Microsoft.OperationalInsights \
   Microsoft.Storage
 do
@@ -60,23 +62,21 @@ done
 1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open **Identity > Applications > App registrations > New registration**.
 2. Name it `PDF Validation Portal`, select **Accounts in this organizational directory only**, and leave redirect URI empty for now. Create it and record its **Directory (tenant) ID** and **Application (client) ID**.
 3. Under **Expose an API**, set the Application ID URI to `api://<APPLICATION_CLIENT_ID>`. Set `api.requestedAccessTokenVersion` to `2` in the app manifest.
-4. Add an enabled delegated scope named `Validation.Access` for approved integrations that call on behalf of a user.
+4. Add an enabled delegated scope named `Validation.Access` with **Who can consent: Admins only** for approved integrations that call on behalf of a user. Delegated tokens must include both this scope and the signed-in user's `Validation.User` role.
 
 > In the portal/API app registration (the one named PDF Validation > Portal):
 >
 > a. Open Expose an API. If you haven’t set an Application ID URI yet, > select Add and save the suggested api://<application-client-id> URI.
 > b. Select Add a scope.
-> b. Set Scope name to Validation.Access.
-> d. Choose Who can consent:
->    - Admins only if an administrator should approve every client.
->    - Admins and users if users can approve it themselves and your > tenant allows user consent.
-> e. Fill in the admin consent and, if applicable, user consent display > names and descriptions. For example: “Access PDF Validation Portal on > behalf of the signed-in user.”
+> c. Set Scope name to Validation.Access.
+> d. Set Who can consent to **Admins only**.
+> e. Fill in the admin consent display names and descriptions. For example: “Access PDF Validation Portal on > behalf of the signed-in user.”
 > f. Leave State set to Enabled, then select Add scope.
 >
 > The resulting scope identifier is:
 > api://<APPLICATION_CLIENT_ID>/Validation.Access
 >
-> An integration’s app registration must then request this delegated > permission under API permissions → Add a permission → My APIs → PDF > Validation Portal → Delegated permissions. Grant consent as required > by the choice above. Microsoft’s guide to exposing an API scope has > the corresponding portal steps.
+> An integration’s app registration must then request this delegated > permission under API permissions → Add a permission → My APIs → PDF > Validation Portal → Delegated permissions. Have an Entra administrator grant consent on the integration's app registration. Assign each signed-in user the portal's Validation.User role; client consent does not assign that role. Microsoft’s guide to exposing an API scope has > the corresponding portal steps.
 
 5. Add these enabled app roles under **App roles**:
    - `Validation.User`, allowed member types **Users/Groups**
@@ -95,34 +95,25 @@ For each role, create an enabled app role in the PDF Validation Portal app regis
 The Value is the exact role string the application checks in the validated claims. Assign Validation.User to staff or groups, and Validation. Run only to approved integration service principals.
 
 6. Under **Certificates & secrets**, create a client secret for Easy Auth. Copy the secret **Value**; GitHub will store it in step 6. Choose an expiry that supports your rotation policy.
-7. In **Enterprise applications**, assign authorized staff/groups the `Validation.User` role. Assign `Validation.Run` only to approved integration service principals. Configure assignment requirements, tenant consent, and Conditional Access/MFA according to organizational policy.
+7. Assign approved users and integrations, then require assignment on the portal's enterprise application using the steps below.
 
-> In the Microsoft Entra admin center, you assign roles > to the app’s enterprise application (its service > principal), not on the App registrations page.
->
-> Assign Validation.User to staff or groups
->
-> 1. Go to Identity → Applications → Enterprise > applications → All applications.
-> 2. Find and open PDF Validation Portal.
-> 3. Select Users and groups → Add user/group.
-> 4. Under Users and groups, select the staff members or > group you’re authorizing.
-> 5. Under Select a role, choose Validation User.
-> 6. Select Assign.
->
-> If your organization uses groups, assign the role to > the authorized group rather than adding staff one at a > time. Group-based assignment may require an Entra ID > licensing tier; check your organization’s licensing if > the group cannot be assigned.
->
-> Assign Validation.Run to an integration
->
-> For each approved integration, first make sure it has > its own app registration and enterprise application > (service principal).
-> 1. Open the PDF Validation Portal enterprise > application and select Users and groups → Add user/> group.
-> 2. Find the integration’s service principal. In the > picker, switch from Users to All users and groups or > Service principals, depending on the portal view.
-> 3. Under Select a role, choose Validation Run, then > select Assign.
->
-> If the service principal doesn’t appear in the picker, > it may not yet exist in your tenant. Have an > administrator create the integration’s enterprise > application/service principal, then try again. > Validation.Run should be limited to approved > integrations.
->
-> Tenant-wide settings
-> - Require assignment: In the portal’s enterprise > application, open Properties and set Assignment > required? to Yes if you want Entra to block unassigned > users at sign-in. The app also requires Validation.User > for portal access.
-> - Consent: Admin consent for API permissions is managed > under App registrations → PDF Validation Portal → API > permissions → Grant admin consent. For > client-credentials integrations, an administrator also > needs to grant the API application permission/app role > to the integration. Review the requested permissions > before granting consent.
-> - Conditional Access and MFA: An Entra administrator > configures these under Protection → Conditional Access. > Apply your organization’s policy to the portal > enterprise application and intended users; test sign-in > after policy changes.
+### Assign users and require assignment
+
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open **Entra ID > Enterprise apps > All applications** (also labeled **Identity > Applications > Enterprise applications**).
+2. Find **PDF Validation Portal**. On **Overview**, verify its **Application ID** matches the portal/API **Application (client) ID** recorded above. Use the portal's enterprise application, not the GitHub deployment application or an integration client's application.
+3. Open **Manage > Users and groups > Add user/group**. Select the approved staff user or group, choose the **Validation User** role (`Validation.User`), then select **Assign**. Repeat as needed and verify the assignments appear. Group assignment depends on tenant licensing.
+4. For an existing installation, first confirm approved machine integrations have `Validation.Run` through the [client permission setup](azure-api.md#3-add-the-api-application-permission). In the portal enterprise application, open **Manage > Properties**. This setting belongs to the enterprise application (service principal), not the **App registrations** page.
+5. Set **Assignment required?** to **Yes**. Keep **Enabled for users to sign-in?** set to **Yes** so assigned staff can sign in.
+6. Select **Save**. Reopen or refresh **Properties** and confirm **Assignment required?** still shows **Yes**. Record the application ID and verified setting in the deployment record.
+7. Apply these steps to existing installations as well as new ones. The GitHub deployment workflow and Bicep templates do not set this Entra property.
+
+For machine integrations, grant `Validation.Run` through the integration client's **API permissions** and administrator consent as described in [external API client setup](azure-api.md#3-add-the-api-application-permission).
+
+Keep the `Validation.Access` scope set to **Admins only**. Delegated integrations need administrator consent on the client application **and** a `Validation.User` assignment for the signed-in user. The application checks both permissions; consent does not replace the user assignment. Apply the approved Conditional Access/MFA policy to the portal enterprise application.
+
+After deployment, test with a fresh browser session: an assigned staff user should reach the workspace, while an unassigned **non-administrator** should be blocked by Entra. Use a non-administrator for the negative test because Global Administrators are exempt from Entra's assignment requirement; application role checks still apply. See [Microsoft's Assignment required reference](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/application-properties#assignment-required).
+
+For existing installations, update these settings on the existing scope and enterprise application too. Preserve the `Validation.Access` scope ID and existing app-role definitions/assignments. Verify the app manifest has `api.oauth2PermissionScopes` entry `value: Validation.Access`, `type: Admin`, `isEnabled: true`, and the enterprise application has `appRoleAssignmentRequired: true`. These Entra objects are configured separately from Bicep; a code deployment does not change them. See [Microsoft's assignment guidance](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/assign-user-or-group-access-portal) and [enterprise application properties](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/add-application-portal-configure).
 
 Do not add a redirect URI yet; the hostname is produced by the first workflow run. The secret is consumed by Easy Auth and stored as a Container App secret, not passed to the Python process.
 
@@ -136,7 +127,7 @@ Create a Microsoft Entra service principal dedicated to deployments. Configure a
 
 Replace `<OWNER>` and `<REPOSITORY>` with the exact GitHub repository path. The subject must match because the workflow declares `environment: production`.
 
-Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment assigns the runtime identity access to storage and registry resources. A typical setup grants **Contributor** and **Role Based Access Control Administrator** scoped to this resource group. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
+Grant the service principal sufficient permissions at the resource group scope to create and update all resources, build images in ACR, and create managed-identity role assignments. The workflow's first deployment assigns the runtime identity access to storage and registry resources. A typical setup grants **Contributor** and **User Access Administrator** scoped to this resource group. The worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone cannot create these definitions. Use equivalent custom roles if your organization's policy requires them. Do not enable ACR admin credentials to bypass permissions. Role assignment changes can take time to propagate; rerun the workflow if the first attempt encounters a propagation delay.
 
 Record the deployment service principal's **Application (client) ID**. It will be the `AZURE_DEPLOY_CLIENT_ID` value, distinct from the portal/API app registration ID.
 
@@ -162,7 +153,7 @@ Record the deployment service principal's **Application (client) ID**. It will b
 > In the Azure portal:
 >> 1. Open Resource groups → your deployment resource group → Access > control (IAM) → Add → Add role assignment.
 >> 2. Assign Contributor to the deployment app’s service principal.  Search for PDF Validation GitHub Deploy under Select members.
->> 3. Repeat Add role assignment for Role Based Access Control Administrator, selecting the same service principal.
+>> 3. Repeat Add role assignment for User Access Administrator, selecting the same service principal.
 >> 4. Confirm both assignments are scoped to this resource group.
 >> The workflow creates managed identity role assignments for the app’s storage and registry access, so the deployment identity needs role assignment permissions. If the service principal doesn’t appear immediately in the picker, wait briefly and search again.
 > 4. Put the ID in GitHub
@@ -208,16 +199,18 @@ Add the Easy Auth client secret **Value** from step 3 as an environment secret n
 
 ## What the workflow provisions
 
-`Deploy Azure` runs `az bicep build` and then provisions the resources defined by `infra/foundation.bicep` and `infra/main.bicep`: user-assigned managed identity, private Blob container, queue/table storage, ACR with admin access disabled, Log Analytics, Container Apps environment, Easy Auth-protected API, worker and maintenance jobs, and monitoring alerts. It uses managed identity for app-to-storage/registry access and GitHub OIDC for deployment authentication.
+`Deploy Azure` runs `az bicep build` and then provisions the resources defined by `infra/foundation.bicep` and `infra/main.bicep`: separate runtime and worker managed identities, private Blob container, queue/table storage, Premium ACR with admin access disabled, Log Analytics, an API environment and a separate worker VNet/environment with private endpoints and restricted egress, Easy Auth-protected API, worker and maintenance jobs, and monitoring alerts. It uses managed identity for app-to-storage/registry access and GitHub OIDC for deployment authentication.
 
 The app is externally reachable over HTTPS. Easy Auth returns 401 for unauthenticated protected API routes; the public shell and health/configuration endpoints contain no document data. Never expose the Python container port through another ingress or proxy. Uploaded PDFs and reports expire after 72 hours. Log Analytics retention is 30 days. Storage versioning, soft delete, and backups are not enabled by these templates.
+
+Existing installations must follow the [worker isolation migration and verification guide](worker-isolation.md) before the application deployment. This release adds Premium ACR and four private endpoints, which increase infrastructure cost.
 
 ## Verify the deployment
 
 - Open `https://<PORTAL_HOSTNAME>/health/ready`; it should return success.
 - Verify anonymous `/api/session` and `/api/v1/documents` requests return 401.
-- Sign in with an assigned staff account and verify the session and sign-out flow. Confirm an unassigned user cannot access documents.
-- Verify authorized machine integrations use `Validation.Run`; test rejected wrong-tenant, wrong-audience, expired, and missing-role tokens. Test delegated integrations with `Validation.Access` if used.
+- Reopen the portal enterprise application's **Properties** and confirm **Assignment required? = Yes**. Sign in with an assigned staff account and verify the session and sign-out flow. In a separate private browser session, confirm an unassigned non-administrator is blocked by Entra and cannot access documents.
+- Verify authorized machine integrations use `Validation.Run`; test rejected wrong-tenant, wrong-audience, expired, and missing-role tokens. For delegated integrations, confirm a fresh token with both `Validation.Access` and `Validation.User` succeeds; scope-only, role-only bearer and wrong-scope requests must return 403.
 - Upload sample PDFs and check results, report downloads, per-user ownership, and cookie mutation protection.
 - Check worker processing, cleanup, Blob upload CORS, managed identity permissions, alerts, and representative workload.
 

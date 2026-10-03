@@ -13,18 +13,23 @@ module foundation './foundation.bicep' = {
   params: { prefix: prefix, location: location, portalOrigin: portalOrigin }
 }
 var identityId = runtime.id
+var workerIdentityId = workerRuntime.id
 var registry = foundation.outputs.registryServer
 var image = '${registry}/pdf-validation:${imageTag}'
-var env = [
+var commonEnv = [
   { name: 'PDF_ENVIRONMENT', value: 'production' }
   { name: 'PDF_TENANT_ID', value: tenantId }
   { name: 'PDF_AUDIENCE', value: apiClientId }
   { name: 'PDF_AUTH_MODE', value: 'easyauth' }
   { name: 'PDF_STORAGE_ACCOUNT', value: foundation.outputs.storageName }
-  { name: 'AZURE_CLIENT_ID', value: runtime.properties.clientId }
 ]
+var env = concat(commonEnv, [{ name: 'AZURE_CLIENT_ID', value: runtime.properties.clientId }])
+var workerEnv = concat(commonEnv, [{ name: 'AZURE_CLIENT_ID', value: foundation.outputs.workerClientId }])
 resource runtime 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
   name: '${prefix}-runtime'
+}
+resource workerRuntime 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  name: '${prefix}-worker'
 }
 resource api 'Microsoft.App/containerApps@2025-01-01' = {
   name: '${prefix}-api'
@@ -96,14 +101,15 @@ resource auth 'Microsoft.App/containerApps/authConfigs@2025-01-01' = {
 resource worker 'Microsoft.App/jobs@2025-01-01' = {
   name: '${prefix}-worker'
   location: location
-  identity: { type: 'UserAssigned', userAssignedIdentities: { '${identityId}': {} } }
+  identity: { type: 'UserAssigned', userAssignedIdentities: { '${workerIdentityId}': {} } }
   properties: {
-    environmentId: foundation.outputs.environmentId
+    environmentId: foundation.outputs.workerEnvironmentId
+    workloadProfileName: 'Consumption'
     configuration: {
       triggerType: 'Event'
       replicaTimeout: 900
       replicaRetryLimit: 0
-      registries: [{ server: registry, identity: identityId }]
+      registries: [{ server: registry, identity: workerIdentityId }]
       eventTriggerConfig: {
         parallelism: 1
         replicaCompletionCount: 1
@@ -115,7 +121,7 @@ resource worker 'Microsoft.App/jobs@2025-01-01' = {
             {
               name: 'pdf-queue'
               type: 'azure-queue'
-              identity: identityId
+              identity: workerIdentityId
               metadata: { accountName: foundation.outputs.storageName, queueName: 'validation', queueLength: '1' }
             }
           ]
@@ -124,7 +130,7 @@ resource worker 'Microsoft.App/jobs@2025-01-01' = {
     }
     template: {
       containers: [
-        { name: 'worker', image: image, env: env, command: ['pdf-worker'], resources: { cpu: 2, memory: '4Gi' } }
+        { name: 'worker', image: image, env: workerEnv, command: ['pdf-worker'], resources: { cpu: 2, memory: '4Gi' } }
       ]
     }
   }

@@ -1,6 +1,8 @@
 # API guide
 
-Base path: `/api/v1`. **Azure Entra Easy Auth** validates authentication before traffic reaches FastAPI. Integrations send an Entra access token for this API: delegated tokens need `Validation.Access`; application tokens need `Validation.Run`. Configure the registration to issue v2 access tokens. Client credentials use scope `api://API_CLIENT_ID/.default` and an administrator-granted application role.
+Base path: `/api/v1`. **Azure Entra Easy Auth** validates authentication before traffic reaches FastAPI. Integrations send an Entra access token for this API: delegated tokens need both the `Validation.Access` scope and the signed-in user's `Validation.User` role; application tokens need `Validation.Run`. Configure the registration to issue v2 access tokens. Client credentials use scope `api://API_CLIENT_ID/.default` and an administrator-granted application role.
+
+The machine-readable schema remains at `/openapi.json` behind Easy Auth in production. Interactive `/docs` and `/redoc` pages are available only outside production because their CDN assets and inline initialization are incompatible with the portal's strict CSP.
 
 The browser uses Easy Auth's session cookie and `/.auth/login/aad` / `/.auth/logout`, not MSAL or browser-stored tokens. Interactive staff need the `Validation.User` role. Cookie-authenticated mutations also require `X-Requested-With: PDFValidationPortal` (automatically set by the portal); bearer clients do not need that header.
 

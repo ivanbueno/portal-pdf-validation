@@ -256,7 +256,7 @@ Read [security-todo.md](security-todo.md) before changes to authentication, uplo
 
 Important open themes include shared worker privileges, delegated access policy, quotas/rate limits, dependence on platform authentication configuration, browser hardening, non-production mode protection and supply-chain controls. Link the relevant finding ID in related work rather than duplicating a separate backlog here.
 
-Current behavior accepts a delegated `Validation.Access` scope without also requiring `Validation.User`; backlog item M1 proposes a stricter policy. Do not document the proposed rule as already implemented. Authentication changes must consider both browser users and existing integrations.
+Delegated API calls require both the `Validation.Access` scope and the signed-in user's `Validation.User` role. Browser cookie sessions require the user role without an API scope; application tokens require `Validation.Run`. M1's code fix does not change existing Entra registrations: verify admin-only scope consent and Assignment required separately. Authentication changes must preserve these distinctions.
 
 Never commit or log tokens, cookies, passwords, client secrets, connection strings, temporary upload URLs or customer PDFs. The application's structured logs intentionally omit filenames, paths, query strings and raw exception messages. Preserve that discipline when adding diagnostics. Use synthetic fixtures and narrowly scoped metadata in bug reports.
 

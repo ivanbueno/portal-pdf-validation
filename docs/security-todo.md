@@ -9,18 +9,18 @@ Recommended order: M1, H1, M2, M3, L1, then the rest.
 - **Stack:** FastAPI (Python 3.12) serves the API and a Vite single-page app. The browser renders PDFs with pdf.js and pdf-lib. A worker job runs the veraPDF Java CLI in a subprocess. A scheduled maintenance job purges expired data and redispatches stalled work.
 - **Azure:** Container Apps with Easy Auth (Entra), Blob Storage (PDFs and reports), Table Storage (document metadata), Queue Storage (jobs), ACR and Log Analytics. Infrastructure is Bicep, deployed by GitHub Actions through OIDC.
 - **Uploads:** the API reserves a document and returns a SAS URL for one blob. The client uploads directly to Blob Storage. On submit, the API checks the size and the `%PDF-` header and takes a snapshot, which the worker validates.
-- **Authentication:** Easy Auth validates the token and injects `X-MS-CLIENT-PRINCIPAL`. The app parses it, pins the tenant, and accepts the `Validation.User` role, the `Validation.Access` scope, or the `Validation.Run` role (applications). The owner ID is `sha256(tenant:kind:oid)`.
+- **Authentication:** Easy Auth validates the token and injects `X-MS-CLIENT-PRINCIPAL`. The app parses it, pins the tenant, and requires `Validation.User` for browser sessions, both `Validation.User` and `Validation.Access` for delegated API calls, or `Validation.Run` for applications. The owner ID is `sha256(tenant:kind:oid)`.
 
 ```
 Browser / API client ──TLS──► Container Apps ingress ──► Easy Auth sidecar ──► FastAPI
                                                                    │  (trusts injected principal)
         │ SAS PUT (one blob, 1h)                                   ▼
-        └────────────────────────────────────────────► Blob / Table / Queue (one managed identity)
+        └────────────────────────────────────────────► Blob / Table / Queue
                                                                    ▲
                                    Worker job (veraPDF on untrusted PDFs) ─┘   Maintenance job
 ```
 
-Trust boundaries: the Easy Auth edge, the SAS upload path (which bypasses the app), and the worker, which parses hostile PDFs.
+Trust boundaries: the Easy Auth edge, the SAS upload path (which bypasses the app), and the worker, which parses hostile PDFs. The worker now has its own managed identity and VNet; the API and maintenance retain the runtime identity.
 
 ## High
 
@@ -28,13 +28,14 @@ Trust boundaries: the Easy Auth edge, the SAS upload path (which bypasses the ap
 
 Where: [infra/foundation.bicep](../infra/foundation.bicep) (role assignments), [infra/main.bicep](../infra/main.bicep) (worker job)
 
-The worker runs veraPDF on attacker-supplied PDFs. It shares one managed identity with the API and the maintenance job. That identity has Blob, Queue and Table Data Contributor plus Blob Delegator on the whole storage account. The worker has unrestricted outbound access and can reach the instance metadata endpoint to obtain tokens.
+At review time, the worker ran veraPDF on attacker-supplied PDFs using the API/maintenance identity, with account-wide Blob, Queue and Table Data Contributor plus Blob Delegator roles and unrestricted outbound access. The templates now assign a separate worker identity and private network; see [worker isolation](worker-isolation.md) for the permissions, deployment migration and verification procedure. These changes have not been verified on a live Azure deployment.
 
-Impact: one code-execution bug in the Java PDF parser lets an attacker read, change or delete every tenant's PDFs and reports, and forge queue messages.
+Remaining impact: a parser exploit can still obtain the worker's credentials, read other tenants' submitted snapshots, overwrite report paths and update shared document metadata. Marking rows deleted/expired can make maintenance purge documents. Direct Blob deletion, input writes and queue-message creation are denied. H1 remains open until Java is isolated from the credential-bearing coordinator or access is restricted to one document/attempt by a trusted broker.
 
-- [ ] Give the worker its own managed identity.
-- [ ] Limit that identity to reading `input.pdf` snapshots and writing report paths, for example with ABAC conditions on blob path.
-- [ ] Move the worker into a VNet-integrated environment with no outbound internet access.
+- [x] Give the worker its own managed identity.
+- [x] Limit its Blob access to reading `input.pdf` snapshots and writing JSON/XML report paths using ABAC, with no list/delete/delegation grants. Keep only queue consumption and existing-row read/update permissions needed for job coordination.
+- [x] Move the worker into a separate VNet-integrated environment and deny general outbound internet traffic. Required Azure platform service tags and DNS remain allowed; this is not an air gap or an exfiltration-proof boundary.
+- [ ] Isolate the parser from coordinator credentials and restrict each validation to its own document/attempt, including metadata transitions.
 - [ ] Run the Java process with a seccomp or read-only filesystem profile where the platform supports it.
 - [ ] Track veraPDF releases and patch promptly.
 
@@ -42,14 +43,14 @@ Impact: one code-execution bug in the Java PDF parser lets an attacker read, cha
 
 ### M1. The delegated scope alone grants access without a role assignment
 
-Where: [src/portal/auth.py](../src/portal/auth.py), `elif settings.user_role in roles or settings.scope in scopes`
+Where: [src/portal/auth.py](../src/portal/auth.py), delegated principal authorization
 
-`Validation.Access` is accepted without `Validation.User`. The setup docs allow "Admins and users" to consent to that scope. If users can register apps and "Assignment required" is off on the enterprise app, any tenant member or guest can register an app, self-consent to `Validation.Access`, and call the API without being assigned a role.
+At review time, `Validation.Access` was accepted without `Validation.User`, and the setup docs allowed user consent with optional enterprise-app assignment. A tenant member or guest could self-consent and reach the API without a role assignment. The code now requires both permissions for delegated requests; browser sessions still require the staff role and application tokens require `Validation.Run`. Setup docs now mandate admin-only consent and Assignment required. Existing Entra configuration still needs separate verification; it is not managed by Bicep.
 
-- [ ] Require `Validation.User` together with the scope for delegated tokens.
-- [ ] Set the `Validation.Access` scope to admin consent only.
-- [ ] Turn on "Assignment required" on the enterprise application.
-- [ ] Add a test that a delegated token with the scope and no role gets 403.
+- [x] Require `Validation.User` together with the scope for delegated tokens, including mapped scope claims; reject role-only user bearer requests.
+- [ ] Apply/verify admin-only consent on the live `Validation.Access` scope (required in setup docs).
+- [ ] Apply/verify "Assignment required = Yes" on the live enterprise application (required in setup docs).
+- [x] Add regression tests for scope-only 403, missing/wrong scopes, valid delegated access, browser sessions and application-token isolation.
 
 ### M2. No quotas or rate limits (cost and availability abuse)
 
@@ -87,11 +88,13 @@ The app never validates a token. It trusts `X-MS-CLIENT-PRINCIPAL` whenever `aut
 
 Where: [src/portal/app.py](../src/portal/app.py) (`standard_headers`), [frontend/src/pdf-document.js](../frontend/src/pdf-document.js)
 
-The app sends no `Content-Security-Policy`, no `frame-ancestors` or `X-Frame-Options`, and no HSTS. The portal can be framed by another site, which makes clickjacking of "Delete all documents" possible, although it takes two clicks through a confirmation dialog.
+At review time, the portal could be framed by another site, allowing clickjacking of "Delete all documents" despite its confirmation dialog. The app now sends CSP with `frame-ancestors 'none'` and `object-src 'none'`, plus `X-Frame-Options: DENY`, including error and cached-asset responses. Production responses send one-year HSTS, including when TLS terminates at Container Apps ingress. Local HTTP does not set HSTS.
 
-- [ ] Add `Content-Security-Policy: default-src 'self'; frame-ancestors 'none'; object-src 'none'`, adding `worker-src blob:` if pdf.js needs it.
-- [ ] Add `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
-- [ ] Pass `isEvalSupported: false` to `pdfjs.getDocument`.
+- [x] Add a CSP based on `default-src 'self'` and deny framing/objects. Allow only the configured Blob upload origin in `connect-src`, data images/fonts for PDF rendering, and same-origin workers. The bundled pdf.js worker needs no `blob:` exception; scripts cannot use inline code or dynamic evaluation.
+- [x] Add `Strict-Transport-Security: max-age=31536000; includeSubDomains` in production.
+- [x] Pass `isEvalSupported: false` to `pdfjs.getDocument`. CSP independently blocks dynamic JavaScript evaluation.
+
+Browser tests verify rejected framing, blocked inline scripts/unrelated connections, permitted direct-upload connections, and real PDF previews without CSP violations. The CDN-based Swagger/Redoc UIs are disabled in production. Outside production, only their exact routes use a relaxed CSP for their CDN scripts and inline initialization; they retain framing protection. See [CSP directives](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Content-Security-Policy) and [HSTS](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Strict-Transport-Security).
 
 ### L2. Non-production modes fail open if misconfigured
 
@@ -112,7 +115,7 @@ veraPDF is already pinned by SHA-256.
 
 ## Informational
 
-- [ ] Disable `/docs`, `/redoc` and `/openapi.json` in production, or keep them intentionally. They require authentication, and Swagger UI loads from a CDN.
+- [x] Disable `/docs` and `/redoc` in production so their CDN scripts/inline initialization need no CSP exceptions. Retain `/openapi.json` for integrations; Azure Easy Auth protects it in production. Local interactive documentation remains available.
 - [ ] Consider caching `/health/ready`. It needs no authentication and makes three storage calls per request.
 - [ ] Validate `doc_id` path parameters against `^[0-9a-f]{32}$`. The Azure SDK escapes keys, so this is hardening only.
 

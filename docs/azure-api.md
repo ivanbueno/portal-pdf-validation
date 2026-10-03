@@ -12,7 +12,9 @@ In the Microsoft Entra admin center, open **Identity → Applications → App re
 - **Application (client) ID**
 - Application ID URI, expected to be `api://<PORTAL_API_CLIENT_ID>`
 
-Under **Expose an API**, make sure the Application ID URI is set and that the app manifest has `api.requestedAccessTokenVersion` set to `2`.
+Under **Expose an API**, make sure the Application ID URI is set and that the app manifest has `api.requestedAccessTokenVersion` set to `2`. Keep the `Validation.Access` delegated scope set to **Admins only**. In the portal's **Enterprise application → Properties**, set **Assignment required?** to **Yes**.
+
+Delegated clients use a different flow from the machine client below: an administrator must consent to `Validation.Access`, and the signed-in user must be assigned `Validation.User` on the portal enterprise application. Their token needs both `scp: Validation.Access` and `roles: Validation.User`; either permission alone is rejected. Follow [manual integration setup](azure-manual.md#36-authorize-integrations-if-required).
 
 Under **App roles**, confirm this role is present, enabled, and configured for **Applications**:
 

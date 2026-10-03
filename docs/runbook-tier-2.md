@@ -83,7 +83,7 @@ These are repository defaults, not measurements or approved performance targets.
 | Blob Storage | Private `documents` container; stores input, pinned input snapshots and reports. | Upload, validation input, PDF viewing and report downloads fail. |
 | Table Storage | `validation` table; ownership, lifecycle and report references. | Listing, submission, authorization-by-ownership and progress tracking fail. |
 | Queue Storage | `validation` queue; messages identify owner and document. | New validation work may not start. |
-| Registry | Basic tier; private image pulls through runtime identity; admin login disabled. | New replicas or executions may fail to start while existing ones still run. |
+| Registry | Premium tier; worker pulls through Private Link with its own identity; API/maintenance use runtime identity; admin login disabled. | New replicas or executions may fail to start while existing ones still run. |
 | Log Analytics | `pdfval-logs`, 30-day retention. | Missing logs reduce visibility; this alone does not prove an application outage. |
 
 ### Document lifecycle and automatic recovery
@@ -119,12 +119,15 @@ These are repository defaults, not measurements or approved performance targets.
 | Identity | Purpose | Where to inspect it |
 |---|---|---|
 | GitHub deployment identity | Authenticates the release workflow to Azure using OpenID Connect, a short-lived trust exchange. Creates resources and role assignments. | `Azure Portal > Microsoft Entra ID > App registrations > [confirmed deployment registration] > Certificates & secrets > Federated credentials`; `Azure Portal > Resource groups > pdf-validation-prod > Access control (IAM) > Role assignments` |
-| Runtime identity `pdfval-runtime` | Lets the API and jobs access Storage and pull images. | `Azure Portal > Managed Identities > pdfval-runtime > Overview`; `Azure Portal > Container Apps > pdfval-api > Settings > Identity` |
+| Runtime identity `pdfval-runtime` | Lets the API and maintenance job access Storage and pull images. | `Azure Portal > Managed Identities > pdfval-runtime > Overview`; `Azure Portal > Container Apps > pdfval-api > Settings > Identity` |
+| Worker identity `pdfval-worker` | Snapshot reads, report writes, queue consumption and table state updates; separate worker VNet/environment. | `Azure Portal > Container App Jobs > pdfval-worker > Settings > Identity` |
 | Portal/API Entra registration | Defines browser sign-in, API audience, roles, delegated scope and the Easy Auth credential. | `Azure Portal > Microsoft Entra ID > App registrations > [confirmed portal registration] > Overview`; assignments: `Azure Portal > Microsoft Entra ID > Enterprise applications > [confirmed portal enterprise application] > Users and groups` |
 
 The deployment trust expects issuer `https://token.actions.githubusercontent.com`, subject `repo:ivanbueno/portal-pdf-validation:environment:production`, and audience `api://AzureADTokenExchange`. Compare these exactly when `azure/login` fails. The deployment client ID and portal/API client ID are different values.
 
 The foundation gives the runtime identity Storage Blob Data Contributor, Storage Blob Delegator, Storage Queue Data Contributor and Storage Table Data Contributor at storage-account scope, plus AcrPull at registry scope. Inspect effective assignments at `Azure Portal > Storage accounts > [confirmed account] > Access control (IAM) > Role assignments` and `Azure Portal > Container registries > [confirmed registry] > Access control (IAM) > Role assignments`.
+
+The worker must never inherit those broad runtime roles. See [worker isolation](worker-isolation.md) for its custom role conditions, private endpoints, migration and negative access checks.
 
 An Azure management role does not automatically prove data access. Successful use of the engineer's account does not prove the runtime identity has access. See [Microsoft's managed identity guide](https://learn.microsoft.com/en-us/azure/container-apps/managed-identity).
 
@@ -132,7 +135,7 @@ An Azure management role does not automatically prove data access. Successful us
 
 Easy Auth is Azure's authentication layer in front of this application. FastAPI trusts the validated principal supplied by that layer. Never expose the Python port through a second ingress/proxy or disable Easy Auth to make a test pass.
 
-- Staff use `Validation.User`. Approved delegated integrations use `Validation.Access`; application integrations use `Validation.Run`.
+- Staff use `Validation.User`. Delegated integrations require both `Validation.Access` and the signed-in user's `Validation.User` role; application integrations use `Validation.Run`. The scope must be admin-only and the portal enterprise application must have Assignment required set to Yes.
 - Cookie-authenticated write requests require `X-Requested-With: PDFValidationPortal` and must not be cross-site. The portal sets this header. Bearer integrations use the documented API flow.
 - Owner identity includes tenant, identity kind and object ID. A different account or recreated integration identity will not own the previous identity's documents.
 - The public shell, assets, `/api/config`, `/health/live` and `/health/ready` do not establish an authenticated session. `/api/session` and document APIs remain protected.
@@ -146,7 +149,7 @@ Use [the application's authorization source](../src/portal/auth.py) and [Microso
 |---|---|---|
 | GitHub `Settings > Environments > production > Environment variables` | `AZURE_RESOURCE_GROUP`, `AZURE_PREFIX`, `AZURE_SUBSCRIPTION_ID`, `AZURE_TENANT_ID`, `AZURE_DEPLOY_CLIENT_ID`, `API_CLIENT_ID`, `ALERT_EMAIL` | Inspect names and approved non-secret values. Do not change targets during troubleshooting. |
 | GitHub `Settings > Environments > production > Environment secrets` | `ENTRA_CLIENT_SECRET` | Secret for portal Easy Auth, not GitHub's deployment login. Never print it. |
-| Container App environment variables | `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, `PDF_STORAGE_ACCOUNT`, `PDF_TENANT_ID`, `PDF_AUDIENCE`, `AZURE_CLIENT_ID` | Defined in Bicep and shared with the jobs. Compare only relevant non-secret settings. |
+| Container App environment variables | `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, `PDF_STORAGE_ACCOUNT`, `PDF_TENANT_ID`, `PDF_AUDIENCE`, `AZURE_CLIENT_ID` | Defined in Bicep; worker uses its own `AZURE_CLIENT_ID`. Compare only relevant non-secret settings. |
 | Container App secret | `entra-client-secret` | Used by the platform's authentication configuration. Do not dump secret values or put them in shell history. |
 | Python defaults | Timeouts, lease, retention and validation profiles | Defaults in code may not be displayed as Azure environment variables. Check the deployed version's source. |
 
@@ -396,7 +399,7 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 1. Confirm the record is `queued`, not `uploading`. Submission must finish before worker processing starts. Obtain metadata through the owner's existing UI/API session; do not access arbitrary users' data.
 2. Inspect `Azure Portal > Container App Jobs > pdfval-worker > Monitoring > Execution history`. Zero executions with an empty queue is normal; queued documents without progress need investigation.
 3. Compare starts/finishes over time with the maximum four concurrent executions. Check environment System logs for queue scaler authentication, image pull, quota or scheduling errors.
-4. Inspect runtime Queue/Table/Blob roles and the job's configured storage account. Ready API health alone does not prove worker configuration is correct.
+4. Inspect worker Queue/Table/Blob grants and the job's configured storage account. Ready API health alone does not prove worker configuration is correct.
 5. Check `pdfval-maintenance` execution history and recent `maintenance_finished` events. It recovers queued records whose queue send was interrupted.
 
 **Good:** New jobs start and document states advance. **Escalate:** DevOps for scaler/start failures, developers for dispatch/state inconsistencies. Do not dequeue, purge or fabricate queue messages. Scaling up workers is a reviewed capacity change, not a first diagnostic step.
@@ -453,7 +456,7 @@ Each procedure ends with a decision. Preserve evidence before recovery actions, 
 
 1. Inspect `Azure Portal > Storage accounts > [confirmed account] > Resource health`, Metrics and Activity log for the incident window.
 2. Match the failing service: Blob, Queue or Table. Record the SDK error type, request/operation time and runtime identity object ID.
-3. Verify the identity is assigned to the API and both jobs, and `AZURE_CLIENT_ID` selects it. Compare Storage role assignments and any recent network policy changes.
+3. Verify API and maintenance use the runtime identity, while worker image pulls, scaling and `AZURE_CLIENT_ID` use only the worker identity. Compare scoped Storage role assignments, Blob conditions, private DNS and recent network policy changes against [worker isolation](worker-isolation.md).
 4. Compare declared configuration with the current release. Shared-key access is disabled and production code rejects storage connection strings.
 
 **Good:** Expected runtime identity accesses the required data services and readiness succeeds. **Escalate:** Identity/storage owner for permission or network repair, Azure support through DevOps for platform failure. Do not enable shared keys, make blobs public or add broad roles as a workaround.

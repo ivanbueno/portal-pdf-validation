@@ -6,6 +6,8 @@ Azure Container Apps Easy Auth handles staff sign-in, session cookies, and acces
 
 **Completion criteria:** both deployments succeed, the resource checks match this runbook, readiness returns HTTP 200, protected endpoints reject anonymous requests, an assigned staff member can upload and validate a PDF, maintenance runs successfully, and operations receives a test alert if email notification is configured.
 
+For an existing deployment, first follow the [worker environment migration guide](worker-isolation.md#existing-deployments). Premium ACR and four private endpoints add cost.
+
 ## 1. Collect the deployment details and confirm access
 
 ### 1.1 Record the approved values
@@ -36,7 +38,7 @@ Also record the generated registry name, storage name, portal URL, release image
 | Create the resource group | An Azure administrator or an operator with resource-group creation permission at subscription scope |
 | Register resource providers | An administrator with provider-registration permission at subscription scope |
 | Provision resources and run ACR builds | Operator with **Contributor** on the target resource group, or equivalent custom permissions including ACR builds |
-| Create the runtime identity's role assignments | Operator with **Role Based Access Control Administrator** on the target resource group, or equivalent role-assignment permissions |
+| Create managed-identity custom roles and assignments | Operator with **User Access Administrator** on the target resource group, or equivalent role-definition and role-assignment permissions |
 | Register/configure the portal application and assign staff | An authorized Entra application administrator/owner with the required directory permissions |
 | Grant integration admin consent or configure Conditional Access | An appropriately privileged Entra administrator |
 
@@ -48,10 +50,10 @@ To have an Azure administrator grant the operator the resource-group roles:
 2. Select **Add > Add role assignment**. Choose **Contributor** and select **Next**.
 3. Under **Members**, choose **User, group, or service principal > Select members**. Select the approved operator or operations group.
 4. Select **Review + assign** to finish.
-5. Repeat for **Role Based Access Control Administrator**. The administrator must ensure any assignment conditions permit the runtime roles listed in section 4.3.
+5. Repeat for **User Access Administrator**. The administrator must ensure any assignment conditions permit the runtime roles listed in section 4.3.
 6. Confirm both assignments are at this resource group. Allow time for propagation, then sign in again if necessary.
 
-**Checkpoint:** the subscription, region, names, access, and responsible administrators are known. These templates create a public HTTPS endpoint; they do not configure custom domains, private networking, or API Management. Escalate requirements for those features before provisioning.
+**Checkpoint:** the subscription, region, names, access, and responsible administrators are known. These templates create a public HTTPS API and a separate worker VNet with restricted egress and private endpoints. They do not configure custom domains or API Management. Worker custom roles require `Microsoft.Authorization/roleDefinitions/write`; Role Based Access Control Administrator alone is insufficient. Escalate requirements for those features before provisioning.
 
 ## 2. Prepare the command session and resource group
 
@@ -132,7 +134,7 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    ```sh
    for provider in \
      Microsoft.App Microsoft.Authorization Microsoft.ContainerRegistry \
-     Microsoft.Insights Microsoft.ManagedIdentity Microsoft.OperationalInsights Microsoft.Storage
+     Microsoft.Insights Microsoft.ManagedIdentity Microsoft.Network Microsoft.OperationalInsights Microsoft.Storage
    do
      az provider register --namespace "$provider"
    done
@@ -143,7 +145,7 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    ```sh
    for provider in \
      Microsoft.App Microsoft.Authorization Microsoft.ContainerRegistry \
-     Microsoft.Insights Microsoft.ManagedIdentity Microsoft.OperationalInsights Microsoft.Storage
+     Microsoft.Insights Microsoft.ManagedIdentity Microsoft.Network Microsoft.OperationalInsights Microsoft.Storage
    do
      az provider show --namespace "$provider" \
        --query '{provider:namespace,state:registrationState}' --output table
@@ -189,15 +191,15 @@ Use Bash on an approved workstation or **Bash** in Azure Cloud Shell. These exam
    | Field | Value |
    | --- | --- |
    | Scope name | `Validation.Access` |
-   | Who can consent | **Admins only**, unless an approved tenant policy specifies otherwise |
+   | Who can consent | **Admins only** |
    | Admin consent display name | `Access PDF Validation Portal` |
    | Admin consent description | `Allows this application to access PDF Validation Portal on behalf of the signed-in user.` |
    | State | **Enabled** |
 
 5. Select **Add scope**. Verify the resulting identifier is `api://<APPLICATION_CLIENT_ID>/Validation.Access`.
-6. If your administrator approved **Admins and users**, also supply the user consent display name and description before saving.
+6. For an existing registration, edit the existing `Validation.Access` scope to **Admins only**, preserving its ID. Verify `api.oauth2PermissionScopes` contains an enabled entry with `value: Validation.Access` and `type: Admin`. Do not create a replacement scope or change unrelated permissions.
 
-This delegated scope is for integrations acting on behalf of a user. Staff browser sign-in uses Easy Auth and the staff app role below.
+This delegated scope is for administrator-approved integrations acting on behalf of a user. Each delegated token must also contain the signed-in user's `Validation.User` role. Scope consent alone grants no API access. Staff browser sessions use Easy Auth and the staff app role below without needing an API scope.
 
 ### 3.3 Create both app roles
 
@@ -226,14 +228,19 @@ This credential is used by Easy Auth, stored as the Container App secret `entra-
 
 ### 3.5 Assign staff access
 
-1. Go to **Identity > Applications > Enterprise applications > All applications**.
-2. Find `PDF Validation Portal`. Check its **Application ID** against section 3.1 to avoid selecting another app with the same display name.
-3. Open **Users and groups > Add user/group**.
+1. In the [Microsoft Entra admin center](https://entra.microsoft.com), open **Entra ID > Enterprise apps > All applications** (also labeled **Identity > Applications > Enterprise applications**).
+2. Find **PDF Validation Portal**. On **Overview**, check its **Application ID** against section 3.1. Use the portal/API enterprise application, not a similarly named app, the GitHub deployment application or an integration client's application.
+3. Open **Manage > Users and groups > Add user/group**.
 4. Under **Users and groups**, select the approved staff user(s) or group, then select **Select**.
-5. Under **Select a role**, choose **Validation User**, then select **Assign**.
+5. Under **Select a role**, choose **Validation User** (`Validation.User`), then select **Assign**.
 6. Confirm the assignments appear with the correct role. Group assignment depends on tenant licensing; ask the Entra administrator if the group option is unavailable.
-7. Open **Properties**. Set **Assignment required?** according to the approved access policy (normally **Yes** for a restricted staff portal), then **Save**. The application independently requires `Validation.User` for staff browser access.
-8. Have the Entra administrator apply the approved consent and Conditional Access/MFA policy. Tier 1 should record the policy decision and test the sign-in result in section 7.
+7. For an existing installation, first confirm approved machine integrations have `Validation.Run` as described in section 3.6. In the portal enterprise application, open **Manage > Properties**. **Assignment required?** is an enterprise-application setting; it is not on **App registrations**.
+8. Set **Assignment required?** to **Yes**. Keep **Enabled for users to sign-in?** set to **Yes** so assigned staff can sign in.
+9. Select **Save**. Reopen or refresh **Properties** and verify **Assignment required?** still shows **Yes**. Record the application ID and verified setting in the deployment ticket. The corresponding service-principal property is `appRoleAssignmentRequired: true`.
+10. Repeat this verification for existing installations. Bicep and application deployments do not change this Entra setting.
+11. Have the Entra administrator apply the approved consent and Conditional Access/MFA policy. Test assigned and unassigned users after deployment using section 7.2.
+
+The application independently requires `Validation.User` for browser users and both `Validation.User` and `Validation.Access` for delegated API calls. Keep scope consent set to **Admins only**; consent is separate from user assignment. See [Microsoft's Assignment required reference](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/application-properties#assignment-required).
 
 ### 3.6 Authorize integrations, if required
 
@@ -243,13 +250,13 @@ Skip this subsection if no integration is being onboarded. Creating `Validation.
 2. Open the **integration's app registration** > **API permissions > Add a permission > My APIs > PDF Validation Portal**.
 3. For a machine client, select **Application permissions > Validation.Run > Add permissions**.
 4. Have an authorized Entra administrator select **Grant admin consent for <tenant>**. Verify the permission shows **Granted for <tenant>**.
-5. For a delegated client, request **Delegated permissions > Validation.Access** instead and complete the approved consent process.
+5. For a delegated client, request **Delegated permissions > Validation.Access** instead and have an Entra administrator grant consent. Assign the signed-in user or their group **Validation User** on the portal enterprise application as in section 3.5. Obtain a fresh token and verify it contains both `scp: Validation.Access` and `roles: Validation.User`. The client's consent and the user's role assignment are separate requirements.
 
 Application permissions are assigned through the client registration's API permissions; the staff **Users and groups** picker is not the procedure for granting a machine client `Validation.Run`. Microsoft's [app role assignment guide](https://learn.microsoft.com/en-us/entra/identity-platform/howto-add-app-roles-in-apps) describes this distinction. If the API is missing from **My APIs**, verify the tenant, enabled role, and ownership of both registrations.
 
 Use [azure-api.md](azure-api.md) for integration credentials, token requests, and upload/report calls. Its API setup also applies to this manual deployment: use the portal URL produced below. Machine clients request `api://<APPLICATION_CLIENT_ID>/.default` and need `Validation.Run`; they must not reuse the portal's Easy Auth secret.
 
-**Checkpoint:** the ticket has the correct tenant/client IDs; the scope and two enabled roles exist; an assigned test user exists; the Easy Auth secret is stored securely with a rotation owner. The redirect URI remains pending until section 6.
+**Checkpoint:** the ticket has the correct tenant/client IDs; the admin-only scope and two enabled roles exist; Assignment required is Yes; an assigned test user exists; the Easy Auth secret is stored securely with a rotation owner. The redirect URI remains pending until section 6.
 
 ## 4. Provision shared Azure resources and build the image
 
@@ -294,13 +301,15 @@ Open **Resource groups > your group > Overview**, then refresh. Compare against 
 | Resource | Expected name | Expected configuration / where to inspect |
 | --- | --- | --- |
 | User-assigned managed identity | `<prefix>-runtime` | **Overview** shows client ID and principal/object ID |
-| Container registry | `<prefix><suffix>` | Basic SKU; **Access keys** shows admin user disabled |
+| Worker managed identity | `<prefix>-worker` | Separate client/principal IDs; never assigned the runtime roles |
+| Container registry | `<prefix><suffix>` | Premium SKU (required for Private Link); **Access keys** shows admin user disabled |
 | Storage account | `<prefix><suffix>` | StorageV2, Standard LRS; **Configuration** has HTTPS required, minimum TLS 1.2, blob anonymous access disabled, storage account key access disabled |
 | Blob container | `documents` in the storage account | **Data storage > Containers**; private/no anonymous access |
 | Queue | `validation` in the storage account | **Data storage > Queues** |
 | Table | `validation` in the storage account | **Storage browser > Tables** |
 | Log Analytics workspace | `<prefix>-logs` | 30-day workspace retention |
-| Container Apps environment | `<prefix>-env` | Log Analytics destination is `<prefix>-logs` |
+| Container Apps environment | `<prefix>-env` | API and maintenance; Log Analytics destination is `<prefix>-logs` |
+| Worker environment/network | `<prefix>-worker-env`, `<prefix>-worker-vnet` | Internal workload-profiles environment; NSG denies unmatched outbound traffic; Blob, Queue, Table and ACR private endpoints |
 
 The container, queue, and table are children of the storage account and may not appear as separate rows in the resource-group overview. The operator's management roles do not automatically allow browsing document data. If Storage browser returns a data-access error, do not enable account keys; use the deployment results and the runtime readiness check to verify provisioning, or ask the administrator for approved read access if needed.
 
@@ -313,7 +322,8 @@ The container, queue, and table are children of the storage account and may not 
    - **Storage Table Data Contributor**
    - **Storage Blob Delegator**
 3. Open the **container registry > Access control (IAM) > Role assignments** and verify **AcrPull** for `<prefix>-runtime` at the registry scope.
-4. If any are absent, inspect the `foundation` deployment error before proceeding. Bicep creates these assignments; correct deployment permissions and rerun rather than adding broader runtime roles.
+4. Verify the separate `<prefix>-worker` identity has only the [worker grants](worker-isolation.md#permissions) at container/queue/table/registry scope, with no inherited broad storage grants. Its Blob assignment must carry the ABAC condition.
+5. If any are absent, inspect the `foundation` deployment error before proceeding. Bicep creates these assignments; correct deployment permissions and rerun rather than adding broader runtime roles.
 
 ### 4.4 Build and verify the release image
 
@@ -401,7 +411,7 @@ In **Resource groups > your group > Overview**, confirm the following additional
 | `<prefix>-queue-backlog` alert | Queue message count average above 1,000 over a one-hour window, evaluated every 5 minutes |
 | `<prefix>-worker-failed` and `<prefix>-maintenance-failed` alerts | Failed job executions, severity 2, five-minute window |
 
-Open each app/job's **Identity** and registry/container settings: all must use `<prefix>-runtime` and the same release image. For the API, confirm environment variables `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, the expected `PDF_TENANT_ID`, `PDF_AUDIENCE` (client ID), `PDF_STORAGE_ACCOUNT`, and `AZURE_CLIENT_ID` (runtime identity client ID). The template applies those variables to the jobs too.
+Open each app/job's **Identity** and registry/container settings: API and maintenance use `<prefix>-runtime`; worker, its image pull and its scaler use only `<prefix>-worker`. All use the same release image. Worker must run in `<prefix>-worker-env`. For the API, confirm environment variables `PDF_ENVIRONMENT=production`, `PDF_AUTH_MODE=easyauth`, the expected `PDF_TENANT_ID`, `PDF_AUDIENCE` (client ID), `PDF_STORAGE_ACCOUNT`, and `AZURE_CLIENT_ID` (runtime identity client ID). The jobs share the application settings, but the worker's `AZURE_CLIENT_ID` must be the worker identity's client ID.
 
 ### 5.3 Check Easy Auth configuration
 
@@ -428,7 +438,7 @@ Open each app/job's **Identity** and registry/container settings: all must use `
 
 The token store is not enabled by the template. Protected routes include `/api/session`, `/api/v1/*`, `/docs`, and `/openapi.json`. Excluded paths bypass Easy Auth and do not receive the principal: `/` always serves a public workspace shell, which stays blurred and inert until the protected session check authorizes the user. The shell contains no document data.
 
-**Checkpoint:** the app and both jobs exist with the same image/identity, alerts exist, Easy Auth matches the table, and the portal origin has been recorded. Do not invite users yet; the callback and CORS still need completion.
+**Checkpoint:** the app and both jobs use the same image; the worker has its own identity and environment. Alerts exist, Easy Auth matches the table, and the portal origin has been recorded. Do not invite users yet; the callback and CORS still need completion.
 
 ## 6. Finish the Entra callback and Blob upload CORS
 
@@ -533,7 +543,7 @@ Record pass/fail, time, release image, and any relevant request/document IDs in 
 4. Sign in as the assigned test user; complete MFA if required. Expect the uncovered workspace.
 5. Refresh the page to confirm the session remains usable. In browser developer tools, `/api/session` should return 200. Do not copy session cookies or principal headers into the ticket.
 6. Sign out. Expect return to `/?signed-out` with the workspace covered. Refresh and confirm documents are no longer available.
-7. In a separate private session, sign in as the unassigned user. If **Assignment required?** is enabled, Entra should block sign-in; otherwise the app should show access needed and deny document access. Either outcome must prevent document access.
+7. Reopen the portal enterprise application's **Properties** and confirm **Assignment required? = Yes**. In a separate private browser session, sign in as the unassigned **non-administrator** test user. Expect Entra to block sign-in. Global Administrators are exempt from Entra's assignment requirement, so do not use one for this negative test. If the ordinary unassigned user can sign in, recheck the tenant, application ID and saved setting from section 3.5; the application must still deny document access without `Validation.User`.
 8. Have the identity owner validate renewal/expiry behavior against the organization's session policy; record any longer-running checks with an owner and due date.
 
 ### 7.3 Check upload, processing, reports, and ownership
@@ -545,7 +555,7 @@ Record pass/fail, time, release image, and any relevant request/document IDs in 
 5. Open the PDF preview and download an available report. Confirm the report corresponds to the selected test document.
 6. With a second assigned user in another browser session, verify the first user's documents are absent. An engineer can verify direct requests for the other user's document return 404 using the documented [API endpoints](api.md).
 7. Delete a test document through the portal. Confirm it disappears and is no longer accessible. Leave a separate test document for the retention check in section 8 if required.
-8. If integrations are in scope, follow [azure-api.md](azure-api.md) to obtain a fresh token and complete upload → submit → poll → report download. Have the integration owner verify rejection of wrong-tenant, wrong-audience, expired, and missing-role tokens; test delegated access if used.
+8. If integrations are in scope, follow [azure-api.md](azure-api.md) to obtain a fresh token and complete upload → submit → poll → report download. Have the integration owner verify rejection of wrong-tenant, wrong-audience, expired, and missing-role tokens; for delegated access, verify both the user role and scope are required (scope-only and role-only bearer requests return 403).
 
 Cookie-authenticated changes require `X-Requested-With: PDFValidationPortal`, which the UI sends. Bearer API clients do not need that header. The application/security owner should verify cookie mutation rejection without it and under a cross-site request before production acceptance; record the result or an explicit outstanding acceptance item.
 
